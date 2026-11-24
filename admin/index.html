@@ -46,6 +46,13 @@ td.em{word-break:break-all;font-weight:600}
 .msg{margin-top:10px;font-size:14px;min-height:20px}.msg.er{color:#ffb3b3}.msg.ok{color:var(--ci)}
 .vazio{color:var(--ink3);padding:18px 8px}
 @media(max-width:700px){.col-or,.col-pl{display:none}}
+.funil{display:grid;gap:8px}
+.passo{display:grid;grid-template-columns:minmax(120px,190px) 1fr 70px;align-items:center;gap:10px;font-size:14px}
+.passo .bar{height:22px;border-radius:7px;background:var(--bg2);overflow:hidden}.passo .bar i{display:block;height:100%;border-radius:7px;background:linear-gradient(90deg,var(--ci),#2fd3c699)}
+.passo.pago .bar i{background:linear-gradient(90deg,var(--au2),var(--au))}
+.passo b{text-align:right;font-variant-numeric:tabular-nums}.passo small{color:var(--ink3);font-weight:600}
+.fil{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}.fil select{max-width:200px}
+.nota{color:var(--ink3);font-size:13px;margin-top:12px;line-height:1.5}
 .bloq{display:grid;place-items:center;min-height:70vh;text-align:center;color:var(--ink2);line-height:1.6}
 </style>
 </head>
@@ -68,6 +75,14 @@ td.em{word-break:break-all;font-weight:600}
   </form>
   <div class="acoes"><button class="btn" id="bSalvar" type="button">Salvar acesso</button><button class="btn sec" id="bLimpar" type="button">Limpar</button></div>
   <div class="msg" id="msg"></div>
+ </section>
+
+ <section class="caixa">
+  <h2>Funil da página de vendas</h2>
+  <div class="fil"><select id="fDias"><option value="1">Últimas 24 horas</option><option value="7" selected>Últimos 7 dias</option><option value="30">Últimos 30 dias</option></select>
+   <select id="fOrigem"><option value="">Todas as origens</option><option value="anuncio-meta">Anúncio (Instagram/Facebook)</option><option value="instagram">Instagram (bio e stories)</option><option value="direto">Direto</option><option value="google">Google</option><option value="tiktok">TikTok</option></select></div>
+  <div class="funil" id="funil"><div class="vazio">Carregando…</div></div>
+  <p class="nota">Cada linha conta pessoas (abas do navegador), não cliques. É anônimo: não registra e-mail, nome nem IP. Pagamentos confirmados aparecem na lista abaixo, com origem "mercadopago".</p>
  </section>
 
  <section class="caixa">
@@ -97,12 +112,26 @@ async function iniciar() {
   $('fEmail').oninput = () => { const m = MESES[$('fPlano').value]; if (m) $('fAte').value = somaMeses(baseData(), m); };
   $('bSalvar').onclick = salvar; $('bLimpar').onclick = limpar;
   $('q').oninput = desenha; $('filtro').onchange = desenha;
-  await carregar();
+  $('fDias').onchange = funil; $('fOrigem').onchange = funil;
+  await carregar(); funil();
 }
 // renovação soma a partir do vencimento atual, se ainda estiver ativo
 function baseData() {
   const r = todos.find(x => x.email === $('fEmail').value.trim().toLowerCase());
   return r && ativo(r) ? new Date(r.valido_ate) : new Date();
+}
+const PASSOS = [['visita', 'Abriram a página'], ['rolou_meio', 'Rolaram até a metade'], ['viu_planos', 'Viram os planos'], ['clicou_teste', 'Tocaram em teste grátis'],
+  ['criou_conta', 'Criaram a conta'], ['comecou_teste', 'Começaram o teste'], ['abriu_atlas', 'Usaram o atlas no teste'], ['clicou_assinar', 'Tocaram em assinar (cartão)'],
+  ['abriu_pix', 'Abriram o Pix'], ['gerou_pix', 'Geraram o Pix'], ['voltou_pagamento', 'Voltaram do pagamento']];
+async function funil() {
+  const desde = new Date(Date.now() - (+$('fDias').value) * 864e5).toISOString();
+  const { data, error } = await sb.rpc('funil', { desde, so_origem: $('fOrigem').value || null });
+  if (error) { $('funil').innerHTML = '<div class="vazio">Funil indisponível: ' + error.message + '</div>'; return; }
+  const n = Object.fromEntries((data || []).map(r => [r.evento, Number(r.sessoes)])), topo = n.visita || 0;
+  $('funil').innerHTML = PASSOS.map(([k, nome]) => {
+    const v = n[k] || 0, pct = topo ? Math.round(v / topo * 1000) / 10 : 0;
+    return `<div class="passo${k === 'voltou_pagamento' ? ' pago' : ''}"><span>${nome}</span><span class="bar"><i style="width:${topo ? Math.max(v ? 1.5 : 0, v / topo * 100) : 0}%"></i></span><b>${v}<br><small>${topo ? pct.toLocaleString('pt-BR') + '%' : ''}</small></b></div>`;
+  }).join('');
 }
 async function carregar() {
   const { data, error } = await sb.from('assinantes').select('*').order('valido_ate', { ascending: false });
@@ -119,7 +148,7 @@ function desenha() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td class="em"></td><td class="col-pl"></td><td></td><td class="col-or"></td><td style="text-align:right;white-space:nowrap"></td>`;
     tr.children[0].textContent = r.email;
-    tr.children[1].textContent = r.plano;
+    tr.children[1].textContent = r.plano === 'teste' ? 'teste grátis' : r.plano;
     tr.children[2].innerHTML = `<span class="tag ${ativo(r) ? 'ok' : 'no'}">${ativo(r) ? 'até ' : 'venceu '}${fmt(r.valido_ate)}</span>`;
     tr.children[3].textContent = r.origem || '';
     const ed = Object.assign(document.createElement('button'), { className: 'btn sec pe', textContent: 'Editar', type: 'button' });

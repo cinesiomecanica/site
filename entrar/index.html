@@ -11,6 +11,7 @@
 <style>
 :root{--bg:#090d18;--bg2:#10162a;--card:#141b31;--line:#263153;--ink:#f2f4fa;--ink2:#aeb7cf;--ink3:#7480a0;--au:#ffb938;--au2:#ffd27a;--ci:#2fd3c6;--er:#ff6b6b}
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 body{min-height:100vh;min-height:100dvh;background:radial-gradient(ellipse 90% 60% at 50% 0%,#1a2552 0%,#0f1530 45%,var(--bg) 80%) fixed;color:var(--ink);font-family:'Instrument Sans',system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:28px 18px 40px}
 a{color:var(--au);text-decoration:none}
 button{font:inherit;cursor:pointer;border:0}
@@ -37,6 +38,8 @@ input:focus{border-color:var(--au)}
 .rod{margin-top:26px;color:var(--ink3);font-size:13.5px;text-align:center;line-height:1.6}
 .bloco{background:var(--bg2);border:1.5px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:16px;font-size:14.5px;color:var(--ink2);line-height:1.5}
 .bloco b{color:var(--ink)}
+.selo{display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;padding:6px 12px;border-radius:999px;background:#2fd3c61c;border:1px solid #2fd3c655;color:var(--ci);font-size:13px;font-weight:700}
+.vista .btn+.btn{margin-top:12px}
 </style>
 </head>
 <body>
@@ -45,12 +48,14 @@ input:focus{border-color:var(--au)}
 <main class="card">
  <!-- entrar / criar conta -->
  <section class="vista on" id="vLogin">
+  <span class="selo" id="seloTeste" hidden>3 dias grátis · sem cartão</span>
   <h1 id="tit">Bem-vindo <em>de volta</em></h1>
   <p class="sub" id="sub">Entre para abrir o atlas 3D.</p>
   <div class="abas"><button type="button" class="on" data-a="entrar">Entrar</button><button type="button" data-a="criar">Criar conta</button></div>
   <form id="fLogin" novalidate>
    <label for="email">E-mail</label><input id="email" type="email" autocomplete="email" inputmode="email" required>
    <div id="dicaEmail" class="dica" hidden>Use o <b style="color:#f2f4fa">mesmo e-mail do pagamento</b>. É por ele que liberamos o seu acesso.</div>
+   <div id="boxTel" hidden><label for="tel">Celular com DDD</label><input id="tel" type="tel" autocomplete="tel-national" inputmode="tel" placeholder="(71) 99999-9999" maxlength="20"><div class="dica">Um teste por pessoa: o mesmo celular não ganha outro teste.</div></div>
    <label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password" required minlength="6">
    <div id="boxSenha2" hidden><label for="senha2">Repita a senha</label><input id="senha2" type="password" autocomplete="new-password" minlength="6"></div>
    <button class="btn" id="bEnviar" type="submit">Entrar</button>
@@ -68,14 +73,23 @@ input:focus{border-color:var(--au)}
 
  <!-- sem assinatura -->
  <section class="vista" id="vSem">
-  <h1>Falta só <em>a assinatura</em></h1>
-  <p class="sub">Você entrou como <b id="emailSem" style="color:#f2f4fa"></b>, mas este e-mail ainda não tem uma assinatura ativa.</p>
-  <a class="btn" href="/#planos">Ver os planos</a>
+  <h1 id="titSem">Falta só <em>a assinatura</em></h1>
+  <p class="sub" id="subSem">Você entrou como <b id="emailSem" style="color:#f2f4fa"></b>, mas este e-mail ainda não tem uma assinatura ativa.</p>
+  <div id="boxTel2" hidden style="text-align:left;margin-bottom:14px"><label for="tel2">Celular com DDD</label><input id="tel2" type="tel" autocomplete="tel-national" inputmode="tel" placeholder="(71) 99999-9999" maxlength="20"><div class="dica">Um teste por pessoa: o mesmo celular não ganha outro teste.</div><div class="msg" id="msgTel"></div></div>
+  <button class="btn" id="bTeste" type="button" hidden>Começar meu teste grátis</button>
+  <a class="btn" id="bPlanos" href="/#planos">Ver os planos</a>
   <div class="bloco"><b>Já pagou?</b> A liberação é automática e costuma levar poucos minutos. Confira se o pagamento foi feito com este mesmo e-mail. Se foi com outro, escreva para <a href="mailto:contato@cinesiomecanica.com.br">contato@cinesiomecanica.com.br</a> que liberamos para você.</div>
   <button class="btn sec" id="bRecheck" type="button">Já paguei, verificar de novo</button>
   <button class="link" id="bSair1" type="button">Entrar com outro e-mail</button>
  </section>
 
+ <!-- teste começou -->
+ <section class="vista" id="vTeste">
+  <h1>Seu teste <em>começou!</em></h1>
+  <p class="sub">Você tem o atlas completo, com simulador, movimentos e posturas, até <b id="fimTeste" style="color:#f2f4fa"></b>.</p>
+  <a class="btn" href="/app/">Abrir o atlas</a>
+  <div class="bloco"><b>Sem cobrança no fim.</b> Quando o teste acabar, o acesso só para. Se quiser continuar, é só escolher um plano com este mesmo e-mail.</div>
+ </section>
  <!-- já conectado com acesso -->
  <section class="vista" id="vOk">
   <h1>Tudo <em>certo!</em></h1>
@@ -88,11 +102,14 @@ input:focus{border-color:var(--au)}
 <p class="rod">Ainda não assina? <a href="/#planos">Conheça os planos</a><br>Dúvidas: <a href="mailto:contato@cinesiomecanica.com.br">contato@cinesiomecanica.com.br</a><br><a href="/termos/">Termos de uso</a> · <a href="/privacidade/">Privacidade</a></p>
 
 <script type="module">
-import { sb, usuario, temAcesso, ehAdmin } from '/conta/conta.js';
+import { sb, usuario, temAcesso, ehAdmin, minhaAssinatura, comecarTeste, celularNormal } from '/conta/conta.js';
+import { cm } from '/conta/medicao.js';
 const $ = id => document.getElementById(id);
 const P = new URLSearchParams(location.search);
 const volta = (P.get('volta') || '/app/').startsWith('/') ? (P.get('volta') || '/app/') : '/app/';
 let modo = 'entrar';
+const TESTE = P.get('teste') === '1';
+const fmtData = d => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', ' às');
 const ver = id => document.querySelectorAll('.vista').forEach(v => v.classList.toggle('on', v.id === id));
 const aviso = (el, t, tipo = 'er') => { el.className = 'msg on ' + tipo; el.textContent = t; };
 const limpa = el => { el.className = 'msg'; el.textContent = ''; };
@@ -108,34 +125,88 @@ const traduz = m => ERROS[m] || m || 'Algo deu errado. Tente de novo.';
 function trocaAba(a) {
   modo = a; document.querySelectorAll('.abas button').forEach(b => b.classList.toggle('on', b.dataset.a === a));
   const criar = a === 'criar';
-  $('tit').innerHTML = criar ? 'Crie sua <em>conta</em>' : 'Bem-vindo <em>de volta</em>';
-  $('sub').textContent = criar ? 'Depois de assinar, crie sua conta com o mesmo e-mail do pagamento.' : 'Entre para abrir o atlas 3D.';
-  $('boxSenha2').hidden = !criar; $('dicaEmail').hidden = !criar; $('bEsqueci').hidden = criar;
+  $('tit').innerHTML = TESTE ? (criar ? 'Teste grátis por <em>3 dias</em>' : 'Entre para <em>começar o teste</em>') : criar ? 'Crie sua <em>conta</em>' : 'Bem-vindo <em>de volta</em>';
+  $('sub').textContent = TESTE ? (criar ? 'Crie sua conta e use o atlas completo, com simulador, movimentos e posturas. Sem cartão e sem cobrança no fim.' : 'Já tem conta? Entre com ela e o teste começa na hora.')
+    : criar ? 'Depois de assinar, crie sua conta com o mesmo e-mail do pagamento.' : 'Entre para abrir o atlas 3D.';
+  $('seloTeste').hidden = !TESTE;
+  $('dicaEmail').innerHTML = TESTE ? 'Use um e-mail que você abre: vamos mandar um <b style="color:#f2f4fa">link de confirmação</b>.' : 'Use o <b style="color:#f2f4fa">mesmo e-mail do pagamento</b>. É por ele que liberamos o seu acesso.';
+  $('boxTel').hidden = !(criar && TESTE); $('boxSenha2').hidden = !criar; $('dicaEmail').hidden = !criar; $('bEsqueci').hidden = criar;
   $('senha').autocomplete = criar ? 'new-password' : 'current-password';
-  $('bEnviar').textContent = criar ? 'Criar conta' : 'Entrar'; limpa($('msg'));
+  $('bEnviar').textContent = criar ? (TESTE ? 'Criar conta e testar grátis' : 'Criar conta') : 'Entrar'; limpa($('msg'));
 }
 document.querySelectorAll('.abas button').forEach(b => b.onclick = () => trocaAba(b.dataset.a));
 
+async function iniciarTeste() {
+  const b = $('bTeste');
+  let tel = null;
+  if (!$('boxTel2').hidden) {
+    tel = celularNormal($('tel2').value); limpa($('msgTel'));
+    if (!tel) return aviso($('msgTel'), 'Digite um celular válido, com DDD. Ex.: (71) 99999-9999.');
+  }
+  b.disabled = true; b.textContent = 'Liberando…';
+  const r = await comecarTeste(tel);
+  if (r && r.ok && r.motivo === 'comecou') { cm('comecou_teste'); $('fimTeste').textContent = fmtData(r.valido_ate); ver('vTeste'); setTimeout(() => location.href = '/app/', 2600); return; }
+  if (r && r.ok) return depoisDoLogin();
+  b.disabled = false; b.textContent = 'Começar meu teste grátis';
+  if (r && (r.motivo === 'sem_telefone' || r.motivo === 'telefone_invalido')) {
+    const u = await usuario(); semAcesso(null, u && u.email); $('boxTel2').hidden = false;
+    if (r.motivo === 'telefone_invalido') aviso($('msgTel'), 'Esse número não parece um celular válido. Confira o DDD e o número.');
+    return;
+  }
+  if (r && ['ja_usou', 'aparelho', 'descartavel', 'telefone'].includes(r.motivo)) { const u = await usuario(); return semAcesso(await minhaAssinatura(), u && u.email, r.motivo); }
+  aviso($('msg'), 'Não foi possível começar o teste agora. Tente de novo em instantes.'); ver('vLogin');
+}
+const DESCARTAVEIS = new Set(["mailinator.com", "yopmail.com", "yopmail.net", "guerrillamail.com", "guerrillamail.net", "guerrillamail.org", "sharklasers.com", "grr.la", "10minutemail.com", "10minutemail.net", "10minemail.com", "temp-mail.org", "temp-mail.io", "tempmail.com", "tempmail.net", "tempmail.dev", "tempmailo.com", "tempail.com", "tempr.email", "emailondeck.com", "getnada.com", "nada.email", "dispostable.com", "maildrop.cc", "mailnesia.com", "mintemail.com", "mohmal.com", "throwawaymail.com", "trashmail.com", "trashmail.de", "fakeinbox.com", "spamgourmet.com", "mytemp.email", "emailfake.com", "fakemail.net", "mail.tm", "mail.gw", "inboxkitten.com", "burnermail.io", "tmail.ws", "tmpmail.org", "tmpmail.net", "dropmail.me", "10mail.org", "emltmp.com", "crazymailing.com", "byom.de", "discard.email", "mailpoof.com", "linshiyouxiang.net", "firemailbox.club", "cs.email", "vomoto.com", "luxusmail.org", "minuteinbox.com", "mailcatch.com", "spambox.us", "tempinbox.com", "owlymail.com"]);
+const NEGADO = {
+  ja_usou: ['Este e-mail <em>já testou</em>', 'O teste grátis é um por pessoa, e <b id="emailSem" style="color:#f2f4fa"></b> já usou o seu. Para continuar, escolha um plano com este mesmo e-mail.'],
+  aparelho: ['Este aparelho <em>já testou</em>', 'O teste grátis é um por pessoa, e este celular ou computador já usou o seu. Para continuar com <b id="emailSem" style="color:#f2f4fa"></b>, escolha um plano.'],
+  telefone: ['Este celular <em>já testou</em>', 'O teste grátis é um por pessoa, e esse número de celular já usou o seu. Para continuar com <b id="emailSem" style="color:#f2f4fa"></b>, escolha um plano.'],
+  descartavel: ['Use um <em>e-mail seu</em>', '<b id="emailSem" style="color:#f2f4fa"></b> é um e-mail temporário, e o teste grátis só vale para e-mails permanentes (Gmail, Outlook, da faculdade…). Crie a conta com outro e-mail ou escolha um plano.']
+};
+function semAcesso(a, email, negado) {
+  // a: linha em assinantes (ou null). Sem linha = nunca teve acesso = pode testar (o servidor ainda confere e-mail e aparelho).
+  const podeTestar = !a && !negado, testeAcabou = a && a.plano === 'teste';
+  $('bTeste').hidden = !podeTestar; if (!podeTestar) $('boxTel2').hidden = true;
+  $('bPlanos').className = podeTestar ? 'btn sec' : 'btn';
+  $('titSem').innerHTML = negado && NEGADO[negado] ? NEGADO[negado][0] : podeTestar ? 'Teste grátis <em>por 3 dias</em>' : testeAcabou ? 'Seu teste <em>terminou</em>' : 'Falta só <em>a assinatura</em>';
+  $('subSem').innerHTML = negado && NEGADO[negado] ? NEGADO[negado][1] : podeTestar ? 'Você entrou como <b id="emailSem" style="color:#f2f4fa"></b>. Este e-mail ainda pode usar o atlas completo por 3 dias, sem cartão.'
+    : testeAcabou ? 'O teste grátis de <b id="emailSem" style="color:#f2f4fa"></b> acabou em ' + fmtData(a.valido_ate) + '. Para continuar, escolha um plano com este mesmo e-mail.'
+    : 'Você entrou como <b id="emailSem" style="color:#f2f4fa"></b>, mas este e-mail ainda não tem uma assinatura ativa.';
+  $('emailSem').textContent = email || '';
+  document.querySelector('#vSem .bloco').hidden = podeTestar || !!negado; $('bRecheck').hidden = podeTestar || !!negado;
+  return ver('vSem');
+}
 async function depoisDoLogin() {
   const u = await usuario(); if (!u) return ver('vLogin');
   if (await temAcesso()) {
     ver('vOk'); if (await ehAdmin()) $('bAdmin').hidden = false;
     if (!P.has('ficar')) setTimeout(() => location.href = volta, 700);
-  } else { $('emailSem').textContent = u.email; ver('vSem'); }
+    return;
+  }
+  const a = await minhaAssinatura();
+  if (!a && TESTE) return iniciarTeste();
+  semAcesso(a, u.email);
 }
+$('bTeste').onclick = iniciarTeste;
 
 $('fLogin').onsubmit = async e => {
   e.preventDefault(); limpa($('msg'));
   const email = $('email').value.trim().toLowerCase(), senha = $('senha').value;
   if (!/^\S+@\S+\.\S+$/.test(email)) return aviso($('msg'), 'Digite um e-mail válido.');
+  if (TESTE && $('boxSenha2').hidden === false && DESCARTAVEIS.has(email.split('@')[1])) return aviso($('msg'), 'Esse é um e-mail temporário. O teste grátis só vale para e-mails permanentes (Gmail, Outlook, da faculdade…).');
+  const telNovo = TESTE && !$('boxTel').hidden ? celularNormal($('tel').value) : null;
+  if (TESTE && !$('boxTel').hidden && !telNovo) return aviso($('msg'), 'Digite um celular válido, com DDD. Ex.: (71) 99999-9999.');
   if (senha.length < 6) return aviso($('msg'), 'A senha precisa ter pelo menos 6 caracteres.');
   const b = $('bEnviar'); b.disabled = true;
   try {
     if (modo === 'criar') {
       if (senha !== $('senha2').value) return aviso($('msg'), 'As senhas não são iguais.');
-      const { data, error } = await sb.auth.signUp({ email, password: senha, options: { emailRedirectTo: location.origin + '/entrar/' } });
+      const { data, error } = await sb.auth.signUp({ email, password: senha, options: { emailRedirectTo: location.origin + '/entrar/' + (TESTE ? '?teste=1' : ''), data: telNovo ? { telefone: telNovo } : undefined } });
       if (error) return aviso($('msg'), traduz(error.message));
-      if (!data.session) return aviso($('msg'), 'Conta criada! Enviamos um link de confirmação para ' + email + '. Abra o e-mail e depois entre aqui.', 'ok');
+      cm('criou_conta', TESTE ? 'teste' : 'pagamento');
+      if (!data.session) return aviso($('msg'), TESTE
+        ? 'Quase lá! Enviamos um link para ' + email + '. Abra o e-mail e toque no link: o teste começa na hora. Não chegou em 2 minutos? Olhe no spam e em Promoções.'
+        : 'Conta criada! Enviamos um link de confirmação para ' + email + '. Abra o e-mail e depois entre aqui.', 'ok');
     } else {
       const { error } = await sb.auth.signInWithPassword({ email, password: senha });
       if (error) return aviso($('msg'), traduz(error.message));
@@ -166,6 +237,8 @@ for (const id of ['bSair1', 'bSair2']) $(id).onclick = async () => { await sb.au
 
 sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') ver('vNova'); });
 if (/type=invite/.test(location.hash)) { $('titNova').innerHTML = 'Bem-vindo! Crie sua <em>senha</em>'; }
+if (TESTE) { trocaAba('criar'); cm('abriu_cadastro', 'teste'); }
+if (P.get('pago') === '1') cm('voltou_pagamento', P.get('pix') === '1' ? 'pix' : 'cartao');
 if (P.get('nova') === '1') ver('vNova');
 else {
   await depoisDoLogin();

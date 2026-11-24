@@ -319,7 +319,7 @@ document.getElementById('bVersao').addEventListener('click',abrirVersao);
 if(!window.__versaoSalva)abrirVersao();</script>
 <script type="module">
 /* acesso: só assinantes (ou quem o administrador liberar) carregam o atlas */
-import { sb, usuario, temAcesso, carregarDados, sair } from '/conta/conta.js';
+import { sb, usuario, temAcesso, carregarDados, sair, minhaAssinatura } from '/conta/conta.js';
 const voltar = () => location.replace('/entrar/?volta=' + encodeURIComponent(location.pathname + location.search));
 try {
   const u = await usuario();
@@ -343,6 +343,42 @@ try {
       setTimeout(() => addEventListener('pointerdown', function f(e) { if (!m.contains(e.target) && e.target !== b) { m.remove(); removeEventListener('pointerdown', f, true); } }, true), 0);
     };
     const v = document.getElementById('bVersao'); v && v.after(b);
+    // teste grátis: selo no topo com os dias que faltam e atalho para os planos
+    minhaAssinatura().then(a => {
+      if (!a || a.plano !== 'teste') return;
+      window.__cmSemAviso = true; import('/conta/medicao.js').then(m => m.cm('abriu_atlas', 'teste')).catch(() => { });
+      const fim = new Date(a.valido_ate), resta = fim - Date.now(), dias = Math.max(1, Math.ceil(resta / 864e5));
+      const quando = fim.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', ' às');
+      const t = document.createElement('button'); t.type = 'button'; t.id = 'bTeste';
+      t.style.cssText = 'flex:none;height:38px;padding:0 12px;border-radius:12px;border:1px solid #2fd3c666;background:#2fd3c61a;color:#2fd3c6;font:700 13px/1 "Instrument Sans",system-ui,sans-serif;white-space:nowrap;cursor:pointer';
+      t.textContent = resta < 864e5 ? 'Teste: último dia' : 'Teste: ' + dias + ' dias';
+      if (innerWidth < 600) {
+        // no celular o topo não tem espaço: o aviso vira um selo no botão da conta e um bloco dentro do menu dela
+        const s = document.createElement('span'); s.textContent = resta < 864e5 ? 'hoje' : dias + 'd';
+        s.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:18px;padding:0 5px;border-radius:9px;background:#2fd3c6;color:#04201d;font:800 11px/18px "Instrument Sans",system-ui,sans-serif;text-align:center;pointer-events:none';
+        b.style.position = 'relative'; b.style.overflow = 'visible'; b.appendChild(s); b.title = 'Minha conta · teste grátis até ' + quando;
+        const abrir = b.onclick;
+        b.onclick = () => {
+          abrir();
+          const m = document.getElementById('contaBox'); if (!m) return;
+          const x = document.createElement('div');
+          x.style.cssText = 'margin:0 0 12px;padding:12px;border-radius:12px;background:#2fd3c614;border:1px solid #2fd3c655;max-width:260px';
+          x.innerHTML = '<div style="font-weight:700;color:#2fd3c6">Teste grátis</div><div style="color:#aeb7cf;margin:3px 0 10px;font-size:13px;line-height:1.45">Vai até <b style="color:#f2f4fa"></b>. Sem cobrança no fim: o acesso só para.</div><a href="/#planos" style="display:block;text-align:center;padding:9px;border-radius:10px;border:1px solid #ffb938;color:#ffb938;font-weight:700;text-decoration:none">Ver os planos</a>';
+          x.querySelector('b').textContent = quando; m.insertBefore(x, m.querySelector('button'));
+        };
+        return;
+      }
+      t.title = 'Teste grátis até ' + quando;
+      t.onclick = () => {
+        const old = document.getElementById('testeBox'); if (old) return old.remove();
+        const m = document.createElement('div'); m.id = 'testeBox';
+        m.style.cssText = 'position:fixed;top:calc(60px + env(safe-area-inset-top));right:12px;left:auto;z-index:50;max-width:300px;background:#141b31;border:1px solid #263153;border-radius:16px;padding:16px;box-shadow:0 14px 40px #000a;font:14px/1.45 "Instrument Sans",system-ui,sans-serif;color:#f2f4fa';
+        m.innerHTML = '<div style="font-weight:700;font-size:15px">Seu teste grátis</div><div style="color:#aeb7cf;margin:4px 0 12px">Vai até <b style="color:#f2f4fa"></b>. Sem cobrança no fim: o acesso só para. Para continuar com tudo, escolha um plano com este mesmo e-mail.</div><a href="/#planos" style="display:block;text-align:center;padding:11px;border-radius:12px;background:#ffb938;color:#1a1203;font-weight:700;text-decoration:none">Ver os planos</a>';
+        m.querySelector('b').textContent = quando; document.body.appendChild(m);
+        setTimeout(() => addEventListener('pointerdown', function f(e) { if (!m.contains(e.target) && e.target !== t) { m.remove(); removeEventListener('pointerdown', f, true); } }, true), 0);
+      };
+      (v || b).before(t);
+    }).catch(() => { });
     await import('./app.js');
   }
 } catch (e) { console.error(e); document.body.insertAdjacentHTML('beforeend', '<div style="position:fixed;inset:0;display:grid;place-items:center;background:#090d18;color:#f2f4fa;font:16px system-ui;z-index:99;text-align:center;padding:24px">Não foi possível carregar o conteúdo.<br>Verifique sua conexão e tente de novo.<br><br><a href="/entrar/" style="color:#ffb938">Entrar de novo</a></div>'); }

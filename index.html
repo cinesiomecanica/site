@@ -64,6 +64,9 @@ h2.d{font-size:clamp(34px,6.4vw,58px);margin:18px 0 14px}
 .btn.sec{background:#141b31cc;border:1.5px solid var(--line);color:var(--ink)}
 .btn.sec:hover{border-color:var(--ci);color:var(--ci)}
 .btn.sm{padding:11px 18px;font-size:15px}
+@media(max-width:440px){.nav .wrap{gap:6px;padding-left:14px;padding-right:14px}.nav .btn.sm{padding:9px 12px;font-size:14px;gap:6px}.nav .btn.sm[href="/entrar/"]{margin-right:0!important}.nav .marca{font-size:17px;gap:7px}.nav .marca svg{width:22px;height:22px}}
+@media(max-width:374px){.nav .marca{font-size:15.5px;gap:5px}.nav .btn.sm{padding:9px 10px;font-size:13.5px}}
+.fixa .btn{flex:none}
 .btn svg{flex:none}
 .pixb{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:10px;padding:13px 18px;border-radius:999px;border:1.5px solid #32bcad66;background:#32bcad14;color:#5fe0d2;font-weight:700;font-size:15.5px;transition:background .2s,border-color .2s}
 .pixb:hover{background:#32bcad26;border-color:#32bcad}
@@ -269,6 +272,12 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
 /* barra fixa no celular */
 .fixa{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 18px;border-radius:20px;background:#141b31f2;border:1.5px solid var(--line);backdrop-filter:blur(12px);box-shadow:0 20px 50px #000c;transform:translateY(140%);transition:transform .35s}
 .fixa.on{transform:none}
+.testef{display:flex;align-items:center;gap:14px;max-width:760px;margin:22px auto 6px;padding:14px 18px;border-radius:20px;background:linear-gradient(90deg,#2fd3c614,#2fd3c608);border:1.5px solid #2fd3c655;color:var(--ink);transition:border-color .2s,transform .2s}
+.testef:hover{border-color:var(--ci);transform:translateY(-1px)}
+.testef .ic{flex:none;display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#2fd3c622;color:var(--ci)}
+.testef .tx{flex:1;line-height:1.35}.testef .tx b{display:block;font-size:16.5px}.testef .tx small{display:block;color:var(--ink2);font-size:14px;margin-top:2px}
+.testef .ir{flex:none;font-weight:700;color:var(--ci);white-space:nowrap}
+@media(max-width:620px){.testef{flex-wrap:wrap}.testef .ir{width:100%;text-align:center;padding:10px;border-radius:999px;background:#2fd3c61f}}
 .fixa div{flex:1;line-height:1.2}.fixa small{display:block;color:var(--ink3);font-size:12.5px;font-weight:600}.fixa b{font-family:var(--fd);font-size:20px;letter-spacing:-.02em}.fixa b em{font-size:20px}
 @media(min-width:860px){.fixa{display:none}}
 
@@ -296,7 +305,7 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
  <span class="sp"></span>
  <a class="lk" href="#recursos">Recursos</a><a class="lk" href="#simulador">Simulador</a><a class="lk" href="#demo">Ver em ação</a><a class="lk" href="#faq">Dúvidas</a>
  <a class="btn sec sm" href="/entrar/" style="margin-right:8px">Entrar</a>
- <a class="btn pri sm" href="#planos">Assinar</a>
+ <a class="btn pri sm" href="/entrar/?teste=1" data-teste="topo">Teste grátis</a>
 </div></header>
 
 <main id="topo">
@@ -307,10 +316,10 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
   <h1 class="d">Pare de decorar.<br>Veja o corpo <em>se mexer.</em></h1>
   <p class="lead">Toque em qualquer músculo, gire o modelo em 360° e veja <b>plano, eixo, ângulos, torque e postura</b> acontecendo na sua frente. No celular ou no computador.</p>
   <div class="ctas">
-   <a class="btn pri pulse" href="#planos">Quero acesso completo <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+   <a class="btn pri pulse" href="/entrar/?teste=1" data-teste="hero">Testar grátis por 3 dias <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
    <a class="btn sec" href="#demo"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Ver em 24 segundos</a>
   </div>
-  <div class="micro"><span><svg width="16" height="16"><use href="#ok"/></svg>A partir de R$ 8,33/mês</span><span><svg width="16" height="16"><use href="#esc"/></svg>Garantia de 7 dias</span><span><svg width="16" height="16"><use href="#ok"/></svg>Sem instalar nada</span></div>
+  <div class="micro"><span><svg width="16" height="16"><use href="#ok"/></svg>Sem cartão de crédito</span><span><svg width="16" height="16"><use href="#ok"/></svg>Depois, a partir de R$ 8,33/mês</span><span><svg width="16" height="16"><use href="#ok"/></svg>Sem instalar nada</span></div>
  </div>
  <div class="vis rv" aria-hidden="true">
   <div class="glow" style="width:420px;height:520px;left:50%;top:30px;transform:translateX(-60%);background:#ffb93830"></div>
@@ -386,7 +395,7 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
    <li><svg width="22" height="22"><use href="#ok"/></svg><span><b>Comparações prontas:</b> barra alta × baixa, costas × frontal, tronco a 45° × paralelo e mais</span></li>
   </ul>
   <p style="margin:14px 0 0;color:var(--ink2);font-size:15px">Já disponível: <b>agachamento</b> (barra alta, barra baixa e frontal), <b>remada curvada</b> (pegada pronada e supinada) e <b>puxada alta</b> (aberta pronada, supinada e triângulo). Novos exercícios entram a cada atualização, sem custo a mais.</p>
-  <div class="ctas"><a class="btn pri" href="#planos">Quero usar o simulador</a></div>
+  <div class="ctas"><a class="btn pri" href="/entrar/?teste=1" data-teste="simulador">Testar o simulador grátis</a></div>
  </div>
 </div></section>
 
@@ -403,7 +412,7 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
    <li><svg width="22" height="22"><use href="#ok"/></svg><span><b>Compare</b> o alinhado com o desvio e veja o que muda</span></li>
    <li><svg width="22" height="22"><use href="#ok"/></svg><span><b>Versão celular</b> feita para gastar menos bateria</span></li>
   </ul>
-  <div class="ctas"><a class="btn pri" href="#planos">Quero estudar assim</a></div>
+  <div class="ctas"><a class="btn pri" href="/entrar/?teste=1" data-teste="demo">Quero testar grátis</a></div>
  </div>
 </div></section>
 
@@ -473,6 +482,7 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
   <div class="au"><small>Anual</small><b>R$ 8,33</b><span>/mês</span><em>−44%</em></div>
  </div>
  <p class="rv center escada-t">Quanto mais tempo você escolhe, <b>menos paga por mês.</b></p>
+ <a class="testef rv" href="/entrar/?teste=1" data-teste="planos"><span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M7.5 15h9"/></svg></span><span class="tx"><b>Ainda em dúvida? Teste 3 dias grátis.</b><small>Sem cartão e sem cobrança no fim. Crie a conta e use o atlas completo.</small></span><span class="ir">Testar grátis →</span></a>
  <div class="planos">
   <div class="pl ini rv">
    <span class="selo">Comece por aqui</span>
@@ -560,6 +570,7 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
  <div class="faq">
   <details class="rv"><summary>Preciso instalar alguma coisa?</summary><p>Não. A Cinesiomecânica abre direto no navegador, no celular ou no computador. Na primeira visita você escolhe a versão que vai usar e pode trocar quando quiser.</p></details>
   <details class="rv"><summary>Funciona no meu celular?</summary><p>Funciona nos celulares atuais, com o navegador atualizado (Chrome ou Safari). A versão celular foi feita para ser leve: tem abas embaixo, folha de informações que você arrasta e menos pixels por quadro para economizar bateria.</p></details>
+  <details class="rv"><summary>Dá para testar antes de pagar?</summary><p>Sim. Crie sua conta em <a href="/entrar/?teste=1" style="color:var(--au)">Testar grátis</a> e use o atlas completo por <b>3 dias</b>, sem cartão. No fim, o acesso simplesmente para: não existe cobrança automática. Se gostar, é só escolher um plano com o mesmo e-mail. O teste é um por pessoa.</p></details>
   <details class="rv"><summary>Como recebo o acesso?</summary><p>Depois que o pagamento é confirmado, o e-mail usado na compra é liberado automaticamente. É só entrar em <a href="/entrar/" style="color:var(--au)">Entrar</a> e criar sua conta com esse mesmo e-mail. Se já tiver conta, basta entrar.</p></details>
   <details class="rv"><summary>Quais são as formas de pagamento?</summary><p><b>Cartão de crédito:</b> assinatura no checkout seguro do Mercado Pago, que se renova sozinha no fim de cada período. Você pode cancelar quando quiser.<br><b>Pix:</b> você paga 1 mês (R$ 15), 6 meses (R$ 60) ou 12 meses (R$ 100) de uma vez, também pelo Mercado Pago. O acesso é liberado assim que o Pix cai e vale até o fim do período, sem cobrança automática. Para continuar, é só pagar outro Pix, e o tempo novo é somado ao que ainda falta.</p></details>
   <details class="rv"><summary>Sou professor. Posso usar nas minhas aulas?</summary><p>Pode, e foi pensado para isso. Com a sua assinatura, você projeta o atlas para a turma no <b>Modo aula</b> (tela cheia, letras maiores e ponteiro). Para turmas, escolas e faculdades que queiram dar acesso a todos os alunos, <a href="mailto:contato@cinesiomecanica.com.br?subject=Cinesiomec%C3%A2nica%20para%20turmas%20e%20institui%C3%A7%C3%B5es" style="color:var(--au)">fale com a gente</a>.</p></details>
@@ -577,7 +588,7 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
  <svg width="86" height="86" style="margin:0 auto 10px;position:relative"><use href="#simb"/></svg>
  <h2 class="d" style="position:relative">Seu próximo estudo de anatomia<br>pode ser <em>em 3D.</em></h2>
  <p class="lead" style="margin:0 auto;position:relative">Acesso a tudo por <b>R$ 15 por mês</b>, ou ainda menos nos planos mais longos, com 7 dias de garantia.</p>
- <div class="ctas" style="justify-content:center;position:relative"><a class="btn pri pulse" href="#planos">Escolher meu plano</a></div>
+ <div class="ctas" style="justify-content:center;position:relative"><a class="btn pri pulse" href="/entrar/?teste=1" data-teste="final">Testar grátis por 3 dias</a><a class="btn sec" href="#planos">Ver os planos</a></div>
 </div></div></section>
 </main>
 
@@ -607,8 +618,10 @@ footer .lks{display:flex;flex-wrap:wrap;gap:8px 20px}
  </form>
 </div>
 
-<div class="fixa" id="fixa"><div><small>Acesso a tudo · cancele quando quiser</small><b><em>R$ 15</em>/mês</b></div><a class="btn pri sm" href="#planos">Assinar</a></div>
+<div class="fixa" id="fixa"><div><small>Atlas completo · sem cartão</small><b><em>3 dias</em> grátis</b></div><a class="btn pri sm" href="/entrar/?teste=1" data-teste="barra">Testar grátis</a></div>
 
+<script>window.cmq = window.cmq || []; window.cm = window.cm || function (e, d) { window.cmq.push([e, d]); };</script>
+<script type="module" src="/conta/medicao.js"></script>
 <script>
 // lista de recursos igual em todos os planos
 const RECURSOS = ['Atlas completo com 254 músculos, 159 ossos e 173 ligamentos','57 movimentos com plano e eixo','Simulador de exercícios com torque e esforço muscular','Modo movimento e marcha','17 desvios posturais com fio de prumo','Versão celular e computador','Todas as atualizações incluídas'];
@@ -650,11 +663,19 @@ document.getElementById('pixF').onsubmit = async e => {
     const r = await fetch(PIX_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, body: JSON.stringify({ email, plano: pixPlano }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.url) throw new Error(d.erro || 'Não foi possível gerar o Pix agora.');
-    location.href = d.url;
+    cm('gerou_pix', pixPlano); location.href = d.url;
   } catch (err) {
     pixErr.textContent = (err && err.message) || 'Não foi possível gerar o Pix agora.'; pixG.disabled = false; pixG.textContent = 'Tentar de novo';
   }
 };
+
+// funil: passos da página (estatística anônima; ver /conta/medicao.js)
+cm('visita');
+document.querySelectorAll('[data-teste]').forEach(a => a.addEventListener('click', () => cm('clicou_teste', a.dataset.teste)));
+document.querySelectorAll('[data-plano]').forEach(a => a.addEventListener('click', () => cm('clicou_assinar', a.dataset.plano)));
+document.querySelectorAll('[data-pix]').forEach(a => a.addEventListener('click', () => cm('abriu_pix', a.dataset.pix)));
+new IntersectionObserver((es, o) => es.forEach(e => { if (e.isIntersecting) { cm('viu_planos'); o.disconnect(); } }), { threshold: .25 }).observe(document.getElementById('planos'));
+addEventListener('scroll', function meio() { if (scrollY + innerHeight > document.body.scrollHeight * .5) { cm('rolou_meio'); removeEventListener('scroll', meio); } }, { passive: true });
 
 // revelar ao rolar
 const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .14, rootMargin: '0px 0px -40px 0px' });
