@@ -1866,7 +1866,7 @@ function listaMov(aba) {
       <h3>Mais</h3><div class="lista"><button data-aba="livre"><i style="background:${CORES_M.est}"></i><span class="lnome">Movimento livre: todas as articulações ao mesmo tempo</span></button><button data-aba="marcha"><i style="background:${CORES_M.sin}"></i><span class="lnome">Marcha: o ciclo fase a fase</span></button></div>`;
   }
   painelP('Corpo em movimento', '<span class="tag">cinesiologia</span>planos, eixos e músculos', `
-    <button class="simcard" data-aba="sim"><b>Simulador de exercícios <span>novo</span></b><small>Torque, braço de momento e esforço de cada músculo em 6 exercícios, com comparação A × B</small></button>
+    <button class="simcard" data-aba="sim"><b>Simulador de exercícios <span>novo</span></b><small>Torque, braço de momento e esforço de cada músculo em 7 exercícios, com comparação A × B</small></button>
     <div class="abas"><button data-aba="art" class="${abaMov === 'art' ? 'on' : ''}">Articulações (${CAT.length})</button><button data-aba="ex" class="${abaMov === 'ex' ? 'on' : ''}">Exercícios (${MOVS.length})</button><button data-aba="livre">Livre</button><button data-aba="marcha">Marcha</button></div>
     ${corpo}
     <div class="aviso">Modelo de estudo: os ossos seguem ângulos médios da literatura e os músculos se deformam acompanhando os ossos, sem simular contração.</div>`);
@@ -2551,6 +2551,27 @@ Object.assign(EX_S, {
     tiles: (p) => [['Quadril · flexão', p.ang.qua], ['Tronco · inclinação', p.info.u], ['Joelho · flexão', p.info.kn], ['Tornozelo · dorsiflexão', p.info.s]],
     aviso: 'No stiff e no terra romeno, o tronco desce até a inclinação escolhida com a coluna neutra, os braços ficam estendidos e o quadril vai para trás para o centro de massa continuar sobre o meio do pé. No stiff o joelho fica quase estendido (cerca de 6°); no terra romeno ele flexiona até cerca de 22° na descida. A barra desce encostada na frente da coxa e da canela, com o braço estendido.',
   },
+  bomdia: {
+    nome: 'Good morning (bom-dia) com barra', curto: 'Good morning', grupo: 'Membros inferiores e costas',
+    vars: [['reto', 'Joelhos quase estendidos'], ['flex', 'Joelhos semiflexionados']], chave: 'joelho',
+    op0: { joelho: 'reto', carga: 40, massa: 75, tronco: 70 },
+    ctl: [['carga', 'Carga na barra', 0, 160, 5, 'kg'], ['tronco', 'Inclinação máxima do tronco (0° = em pé, 90° = paralelo ao chão)', 30, 90, 5, '°'], ['massa', 'Massa corporal', 40, 140, 1, 'kg']],
+    jun: ['qua', 'joe', 'tor', 'lom'], un: ['glu', 'adm', 'isq', 'vas', 'rf', 'sol', 'gas', 'ere', 'mul'],
+    est: ['Rectus abdominis muscle', 'External abdominal oblique muscle', 'Internal abdominal oblique muscle', 'Transversus abdominis muscle', 'Transverse part of trapezius muscle', 'Rhomboid major muscle'],
+    estT: 'Abdômen, oblíquos e transverso seguram a coluna neutra. O trapézio e os romboides mantêm a barra firme sobre as costas.',
+    x: ['flexão do quadril', a => a.qua], dur: 2800,
+    barra0() { const B = SIM.base, [, dy, dz] = BARRAS.alta; return { y: B.Sm.y + dy, z: B.Sm.z + dz }; },
+    pose(k, op) {
+      const B = simBase(), e = lim(k, 0, 1), kn = (op.joelho === 'flex' ? 25 : 8) * (0.3 + 0.7 * e), u = op.tronco * e, b0 = this.barra0(op), br = SIM.B.alta || { y: B.Sm.y - 0.12, z: B.Sm.z + 0.02 };
+      // a barra fica nas costas: quanto mais o tronco inclina, mais ela vai para a frente, e o quadril recua para o centro de massa continuar sobre o meio do pé
+      const z = sv => { const q = cadeia(sv, kn - sv, u); return zcm(q, op, [[op.carga, q.T(b0).z], [MW.braco * 2 * op.massa + 2 * (MW.antebraco + MW.mao) * op.massa, q.T(br).z]]); };
+      const s = bissec(z, B.meioPe, -30, 40), t = kn - s, A = BRACOS_S.alta;
+      const L = { qF: t + u, joe: kn, df: s, ...A, ombF: A.ombF - u };
+      return { L: { d: L, e: { ...L } }, c: { pA: u, cF: -0.4 * u, tF: 0, lF: 0 }, ang: { qua: t + u, joe: kn, tor: s, lom: 0, omb: A.ombF, cot: A.cot }, info: { s, t, u, kn } };
+    },
+    tiles: (p) => [['Quadril · flexão', p.ang.qua], ['Tronco · inclinação', p.info.u], ['Joelho · flexão', p.info.kn], ['Tornozelo · dorsiflexão', p.info.s]],
+    aviso: 'No good morning, a barra fica apoiada no trapézio (barra alta) e o tronco desce até a inclinação escolhida com a coluna neutra. O quadril vai para trás para o centro de massa continuar sobre o meio do pé. Como a barra está longe do quadril, pouca carga já gera muito torque no quadril e na lombar.',
+  },
   pelvica: {
     nome: 'Elevação pélvica com barra (hip thrust)', curto: 'Elevação pélvica', grupo: 'Membros inferiores', barraSeg: 'pelve', semCM: true, quadro: 'deitado',
     vars: [['perto', 'Pés perto do banco'], ['medio', 'Canela vertical no topo'], ['longe', 'Pés longe do banco']], chave: 'pes',
@@ -2931,6 +2952,10 @@ const COMP_S = [
     txt: 'Com a mesma inclinação do tronco, o joelho mais flexionado do terra romeno deixa o quadril ir mais para trás e a flexão do quadril chega mais longe: o pico de torque sobe cerca de 12% no quadril e 20% na lombar. Os isquiotibiais chegam ao mesmo comprimento máximo nos dois: no stiff porque o joelho está estendido, no romeno porque o quadril flexiona mais. No stiff, o joelho quase estendido fica travado e quem segura é a própria articulação; no romeno, o gastrocnêmio ajuda.' },
   { ex: 'stiff', t: 'Descer até 55° × até o tronco paralelo', a: ['Tronco até 55°', { tronco: 55 }], b: ['Tronco até 90°', { tronco: 90 }],
     txt: 'Descer mais aumenta o braço de momento da barra e do tronco: o pico de torque sobe cerca de 28% no quadril e 30% na lombar. Os isquiotibiais e o glúteo máximo trabalham mais alongados no fundo (cerca de 3,5 cm a mais nos isquiotibiais).' },
+  { ex: 'bomdia', t: 'Good morning: descer até 50° × até o tronco paralelo', a: ['Tronco até 50°', { tronco: 50 }], b: ['Tronco até 90°', { tronco: 90 }],
+    txt: 'A barra nas costas fica longe do quadril, e cada grau a mais de inclinação aumenta bastante a alavanca: o pico de torque sobe cerca de 42% no quadril e 45% na lombar, e os isquiotibiais chegam uns 4 cm mais alongados. Com os mesmos 40 kg e o tronco a 70°, o good morning gera cerca de 45% mais torque no quadril e 65% mais na lombar que o stiff, porque no stiff a barra fica pendurada perto das pernas.' },
+  { ex: 'bomdia', t: 'Good morning: joelhos quase estendidos × semiflexionados', a: ['Joelhos quase estendidos (8°)', { joelho: 'reto' }], b: ['Joelhos semiflexionados (25°)', { joelho: 'flex' }],
+    txt: 'O torque no quadril e na lombar fica igual: quem manda é a inclinação do tronco. O que muda é o joelho: com ele quase estendido, os isquiotibiais e o gastrocnêmio trabalham mais para segurá-lo (isquiotibiais de cerca de 66% para 77% de esforço). Flexionar um pouco o joelho deixa o quadril recuar com mais conforto, sem aliviar a lombar.' },
   { ex: 'pelvica', t: 'Elevação pélvica: onde colocar os pés', a: ['Pés perto do banco', { pes: 'perto' }], b: ['Pés longe do banco', { pes: 'longe' }],
     txt: 'Com os pés perto, a força do chão passa à frente do joelho e o quadríceps trabalha um pouco. Com os pés longe, o joelho fica mais estendido e a força passa atrás dele: os isquiotibiais passam a flexionar o joelho e a estender o quadril, e o esforço deles sobe de cerca de 43% para 75%. O torque no quadril também aumenta (cerca de 30%). Para focar o glúteo sem tanto isquiotibial, a canela perto da vertical no topo é o meio-termo.' },
   { ex: 'pelvica', t: 'Amplitude curta × completa', a: ['Quadril desce 15 cm', { desc: 15 }], b: ['Quadril desce 32 cm', { desc: 32 }],
@@ -2939,7 +2964,7 @@ const COMP_S = [
 function simPico(T, j) { let b = T[0]; for (const r of T) if (Math.abs(r.tau[j]) > Math.abs(b.tau[j])) b = r; return b; }
 // estilos da comparação A × B: ficam aqui, junto do código, para nunca ficarem fora de sincronia com uma página em cache
 { const st = document.createElement('style'); st.textContent = '.smcmp-h{display:flex;align-items:center;justify-content:space-between;gap:8px}.smx{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);color:var(--ink3);flex:none}.smab{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.smab button{display:flex;align-items:center;gap:8px;text-align:left;border:1px solid var(--line);border-radius:12px;padding:7px 9px;background:var(--bg2);font-size:12.5px;line-height:1.25;color:var(--ink2)}.smab button i{font-style:normal;font-weight:800;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;color:#0b1020;background:var(--c)}.smab button.on{border-color:var(--c);color:var(--ink);box-shadow:inset 0 0 0 1px var(--c)}.smab-d{display:block;font-size:11.5px;color:var(--ink3);margin:6px 0 2px;line-height:1.4}.smfig{margin-top:6px}.smfig canvas{width:100%;height:240px;display:block;background:#0b1224;border:1px solid var(--line);border-radius:12px}.smfig-m{align-items:center}.smfig-m button{padding:4px 9px;font-size:11.5px}.smfig-m span{font-size:11px;color:var(--ink3);margin-left:auto}html.cel .smfig canvas{height:200px}html.cel .smfig-m button{padding:6px 10px;font-size:12px}.smbar{margin:8px 0}.smbar-t{display:flex;justify-content:space-between;font-size:13px}.smbar-t i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px}.smbar-t b{font-size:12px}.smbar-l{display:grid;grid-template-columns:14px 1fr 64px;align-items:center;gap:6px;margin-top:3px}.smbar-l em{font-style:normal;font-weight:800;font-size:11px}.smbar-l>div{height:7px;background:var(--bg2);border-radius:4px;overflow:hidden}.smbar-l>div i{display:block;height:100%;border-radius:4px}.smbar-l small{font-size:11.5px;color:var(--ink2);text-align:right}.smnova{display:block;width:100%;text-align:left;margin-top:10px;border:1px dashed #ffb93888;border-radius:14px;padding:10px 12px;background:#ffb9380d}.smnova b{display:block;font-size:14px;color:var(--ac)}.smnova small{font-size:12px;color:var(--ink3)}'; document.head.appendChild(st); }
-const COR_A = '#ffb938', COR_B = '#2fd3c6', ORD_S = ['agachamento', 'terra', 'stiff', 'pelvica', 'remada', 'puxada'];
+const COR_A = '#ffb938', COR_B = '#2fd3c6', ORD_S = ['agachamento', 'terra', 'stiff', 'bomdia', 'pelvica', 'remada', 'puxada'];
 const simAbModo = ex => SIM.abModo || (CEL() || ex.semCM ? 'sob' : 'lado');   // no celular e nos exercícios deitados, as duas figuras sobrepostas ficam maiores
 function simDescr(ex, op, base) {   // o que muda numa versão em relação à outra (para os nomes da comparação montada pelo aluno)
   const out = [], v = ex.vars.find(x => x[0] === op[ex.chave]);
