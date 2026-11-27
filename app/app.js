@@ -45,6 +45,7 @@ import('three/addons/environments/RoomEnvironment.js').then(({ RoomEnvironment }
 // piso sutil
 const grid = new THREE.GridHelper(4, 40, '#3a4a7a', '#1c2545'); grid.material.transparent = true; grid.material.opacity = 0.6; scene.add(grid);
 let painelAberto = false;
+const LST = { aba: 'musculos', q: '', reg: '', cache: {}, rol: 0, de: false };   // lista de estruturas (estado)
 // desenha só quando algo muda (economiza bateria): cada interação pede alguns quadros
 let suja = 120; const sujar = (n = 50) => { if (suja < n) suja = n; };
 for (const t of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'click', 'input', 'change', 'keydown', 'touchmove']) addEventListener(t, () => sujar(), { passive: true, capture: true });
@@ -231,7 +232,7 @@ function abrir(nome) {
   if (e.c === 'musculos') h += `<button class="pri" data-a="oi">Ver origem e inserção</button>`;
   h += `<button data-a="iso">${isolado ? 'Mostrar todos' : 'Isolar'}</button><button data-a="ocu">Tirar</button></div>`;
   if (inf && inf.fontes) h += `<div class="fontes">Fontes: ${inf.fontes.map(esc).join(' · ')}</div>`;
-  $('pB').innerHTML = h; $('painel').classList.add('on'); $('pB').scrollTop = 0; painelAberto = true; resize();
+  $('pB').innerHTML = h; $('painel').classList.add('on'); $('pB').scrollTop = 0; painelAberto = true; resize(); lstVoltar();
   $('pB').querySelector('.acoes').onclick = async ev => {
     const a = ev.target.closest('button'); if (!a) return;
     if (a.dataset.a === 'ocu') tirar(nome);
@@ -240,7 +241,7 @@ function abrir(nome) {
       focar(nome, 2.4); }
   };
 }
-function fechar() { $('painel').classList.remove('on'); painelAberto = false; resize(); if (sel && MESH[sel]) MESH[sel].material.emissive.copy(MESH[sel].userData.em0 || new THREE.Color(0)); sel = null; }
+function fechar() { LST.de = false; $('painel').classList.remove('on'); painelAberto = false; resize(); if (sel && MESH[sel]) MESH[sel].material.emissive.copy(MESH[sel].userData.em0 || new THREE.Color(0)); sel = null; }
 $('pX').onclick = fechar;
 $('bLado').onclick = () => { soDireito = !soDireito; $('bLado').classList.toggle('on', soDireito); aplicarVis(); };
 
@@ -3561,6 +3562,148 @@ function mostrarCreditos() {
     <p class="pnota">Material educativo: não substitui avaliação ou orientação de um profissional de saúde.</p>`);
 }
 document.querySelector('.cred').addEventListener('click', mostrarCreditos);
+/* ---------- fibras musculares: estrias na direção das fibras de cada músculo ----------
+   Cada fibra é tratada como uma reta que sai de um ponto da origem e chega a um ponto da inserção (as áreas de origem e inserção do
+   próprio modelo). Para cada vértice guardamos uma coordenada que é igual ao longo de toda a fibra; o desenho das estrias usa essa coordenada. */
+const FIB = { on: false, u: { value: 0 }, feito: new WeakSet(), fila: [], rodando: false };
+function fibMaterial(m) {
+  if (m.userData.fib) return; m.userData.fib = true;
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uFib = FIB.u;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 fibq;\nvarying vec4 vFibq;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvFibq = fibq;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+uniform float uFib; varying vec4 vFibq;
+float fibH(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
+float fibN(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(fibH(i), fibH(i + vec3(1,0,0)), f.x), mix(fibH(i + vec3(0,1,0)), fibH(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(fibH(i + vec3(0,0,1)), fibH(i + vec3(1,0,1)), f.x), mix(fibH(i + vec3(0,1,1)), fibH(i + vec3(1,1,1)), f.x), f.y), f.z); }
+float fibAlt(vec3 q) { float a = fibN(q * 330.0), b = fibN(q * 900.0 + 7.3); float sulco = smoothstep(0.0, 0.34, abs(a - 0.5) * 2.0); return sulco * (0.82 + 0.18 * b); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+float fibh = 1.0, fibk = 0.0; vec3 fibg = vec3(0.0);
+if (uFib > 0.0 && dot(vFibq.xyz, vFibq.xyz) > 0.0) { vec3 q = vFibq.xyz; fibk = uFib * (1.0 - smoothstep(0.30, 0.85, max(length(dFdx(q)), length(dFdy(q))) * 330.0));   // de longe as estrias somem aos poucos, sem serrilhar
+  fibh = fibAlt(q); const float e = 0.0006; fibg = (vec3(fibAlt(q + vec3(e, 0, 0)), fibAlt(q + vec3(0, e, 0)), fibAlt(q + vec3(0, 0, e))) - fibh) / e;
+  diffuseColor.rgb *= mix(1.0, 0.62 + 0.46 * fibh, fibk); }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+if (fibk > 0.0) { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition); vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1);
+  float hx = dot(fibg, dFdx(vFibq.xyz)), hy = dot(fibg, dFdy(vFibq.xyz)); vec3 g = sign(det) * (hx * r1 + hy * r2); normal = normalize(abs(det) * normal - 0.0009 * fibk * g); }`);
+  };
+  m.customProgramCacheKey = () => 'fib3'; m.needsUpdate = true;
+}
+function fibSegmento(pts) {   // resume uma área (origem ou inserção) em um segmento: o eixo mais comprido da área
+  const n = pts.length / 3, c = [0, 0, 0]; for (let i = 0; i < pts.length; i += 3) { c[0] += pts[i]; c[1] += pts[i + 1]; c[2] += pts[i + 2]; } c[0] /= n; c[1] /= n; c[2] /= n;
+  let ax = [1, 0.3, 0.2];
+  for (let it = 0; it < 12; it++) { const s = [0, 0, 0]; for (let i = 0; i < pts.length; i += 3) { const x = pts[i] - c[0], y = pts[i + 1] - c[1], z = pts[i + 2] - c[2], d = x * ax[0] + y * ax[1] + z * ax[2]; s[0] += d * x; s[1] += d * y; s[2] += d * z; } const l = Math.hypot(...s) || 1; ax = [s[0] / l, s[1] / l, s[2] / l]; }
+  let lo = 1e9, hi = -1e9; for (let i = 0; i < pts.length; i += 3) { const d = (pts[i] - c[0]) * ax[0] + (pts[i + 1] - c[1]) * ax[1] + (pts[i + 2] - c[2]) * ax[2]; lo = Math.min(lo, d); hi = Math.max(hi, d); }
+  lo *= 0.9; hi *= 0.9; return { a: c.map((v, k) => v + ax[k] * lo), b: c.map((v, k) => v + ax[k] * hi), c, w: hi - lo };
+}
+function fibCalc(nome) {
+  const m = MESH[nome], e = E[nome]; if (!m || FIB.feito.has(m.geometry)) return; FIB.feito.add(m.geometry);
+  const g = m.geometry, P = g.attributes.position, inv = m.matrixWorld.clone().invert(), v = new THREE.Vector3(), esc = m.matrixWorld.getMaxScaleOnAxis();
+  const area = t => { const out = []; for (const [n2, e2] of Object.entries(E)) { if (e2.c !== 'insercoes' || e2.b !== e.b || e2.l !== e.l || e2.t !== t || !MESH[n2]) continue; const o = MESH[n2], p = o.geometry.attributes.position, st = Math.max(1, Math.floor(p.count / 300));
+    for (let i = 0; i < p.count; i += st) { v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv); out.push(v.x, v.y, v.z); } } return out; };
+  const po = area('origem'), pi = area('inserção'), n = P.count, q = new Float32Array(n * 4);
+  let O, I;
+  if (po.length >= 9 && pi.length >= 9) { O = fibSegmento(po); I = fibSegmento(pi); }
+  else { const all = []; const st = Math.max(1, Math.floor(n / 600)); for (let i = 0; i < n; i += st) all.push(P.getX(i), P.getY(i), P.getZ(i)); const S = fibSegmento(all); O = { a: S.a, b: S.a, c: S.a, w: 0 }; I = { a: S.b, b: S.b, c: S.b, w: 0 }; }
+  // as pontas da origem são ligadas às pontas da inserção do jeito que dá fibras mais curtas (sem cruzar)
+  const dist = (x, y) => Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+  if (dist(O.a, I.b) + dist(O.b, I.a) < dist(O.a, I.a) + dist(O.b, I.b)) [I.a, I.b] = [I.b, I.a];
+  const cx = (O.c[0] + I.c[0]) / 2, cy = (O.c[1] + I.c[1]) / 2, cz = (O.c[2] + I.c[2]) / 2, leque = Math.max(O.w, I.w) > 0.012 / esc;
+  const fibra = l => { const o = [0, 1, 2].map(k => O.a[k] + (O.b[k] - O.a[k]) * l), i = [0, 1, 2].map(k => I.a[k] + (I.b[k] - I.a[k]) * l), d = [i[0] - o[0], i[1] - o[1], i[2] - o[2]], L = Math.hypot(...d) || 1e-6; return { o, d: [d[0] / L, d[1] / L, d[2] / L], L }; };
+  const d2 = (f, x, y, z) => { const px = x - f.o[0], py = y - f.o[1], pz = z - f.o[2], t = Math.max(0, Math.min(f.L, px * f.d[0] + py * f.d[1] + pz * f.d[2])); return (px - f.d[0] * t) ** 2 + (py - f.d[1] * t) ** 2 + (pz - f.d[2] * t) ** 2; };
+  const F = leque ? Array.from({ length: 25 }, (_, k) => fibra(k / 24)) : null, f0 = fibra(0.5);
+  // coordenada igual ao longo de toda a fibra: posição da fibra no leque (λ) e ângulo em volta do eixo da fibra (para músculos roliços)
+  const ref = leque ? [O.b[0] - O.a[0] + I.b[0] - I.a[0], O.b[1] - O.a[1] + I.b[1] - I.a[1], O.b[2] - O.a[2] + I.b[2] - I.a[2]] : (Math.abs(f0.d[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]);
+  const W = Math.max(O.w, I.w) * esc, tmp = new Float32Array(n * 4); let somaR = 0;
+  for (let i = 0; i < n; i++) {
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i); let f = f0, lam = 0.5;
+    if (leque) { let b = 0, bd = 1e9; for (let k = 0; k < 25; k++) { const dd = d2(F[k], x, y, z); if (dd < bd) { bd = dd; b = k; } }
+      let lo = Math.max(0, (b - 1) / 24), hi = Math.min(1, (b + 1) / 24); for (let it = 0; it < 7; it++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (d2(fibra(m1), x, y, z) < d2(fibra(m2), x, y, z)) hi = m2; else lo = m1; } lam = (lo + hi) / 2; f = fibra(lam); }
+    const d = f.d, px = x - f.o[0], py = y - f.o[1], pz = z - f.o[2], s = px * d[0] + py * d[1] + pz * d[2];
+    const rx = px - d[0] * s, ry = py - d[1] * s, rz = pz - d[2] * s, r = Math.hypot(rx, ry, rz);   // do eixo da fibra até o vértice
+    let e1 = [d[1] * ref[2] - d[2] * ref[1], d[2] * ref[0] - d[0] * ref[2], d[0] * ref[1] - d[1] * ref[0]]; const l1 = Math.hypot(...e1) || 1; e1 = [e1[0] / l1, e1[1] / l1, e1[2] / l1];
+    const e2 = [d[1] * e1[2] - d[2] * e1[1], d[2] * e1[0] - d[0] * e1[2], d[0] * e1[1] - d[1] * e1[0]];
+    const c1 = r > 1e-7 ? (rx * e1[0] + ry * e1[1] + rz * e1[2]) / r : 1, c2 = r > 1e-7 ? (rx * e2[0] + ry * e2[1] + rz * e2[2]) / r : 0;
+    tmp[i * 4] = lam; tmp[i * 4 + 1] = c1; tmp[i * 4 + 2] = c2; tmp[i * 4 + 3] = s / f.L; somaR += r;
+  }
+  const R = Math.max(0.004, somaR / n * esc);
+  for (let i = 0; i < n; i++) { q[i * 4] = tmp[i * 4] * W + 0.013; q[i * 4 + 1] = tmp[i * 4 + 1] * R; q[i * 4 + 2] = tmp[i * 4 + 2] * R; q[i * 4 + 3] = tmp[i * 4 + 3]; }
+  g.setAttribute('fibq', new THREE.BufferAttribute(q, 4));
+}
+function fibPasso() {   // calcula aos poucos para não travar a tela
+  const t0 = performance.now(); while (FIB.fila.length && performance.now() - t0 < 14) fibCalc(FIB.fila.pop());
+  sujar(); if (FIB.fila.length) requestAnimationFrame(fibPasso); else { FIB.rodando = false; toast('Fibras prontas'); }
+}
+async function fibras(on) {
+  FIB.on = on; $('bFibras').classList.toggle('on', on); FIB.u.value = on ? 1 : 0; sujar(); if (!on) return;
+  await garantir('insercoes'); aplicarVis();
+  scene.updateMatrixWorld(true);
+  for (const [n, m] of Object.entries(MESH)) if (m.userData.camada === 'musculos') { fibMaterial(m.material); if (!FIB.feito.has(m.geometry)) FIB.fila.push(n); }
+  if (FIB.fila.length && !FIB.rodando) { FIB.rodando = true; toast('Desenhando as fibras…'); fibPasso(); }
+}
+$('bFibras').onclick = ev => { ev.stopPropagation(); fibras(!FIB.on); };
+$('bFibras').style.display = new URLSearchParams(location.search).has('fibras') ? '' : 'none';   // em teste: o botão só aparece com ?fibras na URL
+
+/* ---------- lista de estruturas: tudo o que o modelo tem, por tipo e por região do corpo ---------- */
+{ const st = document.createElement('style'); st.textContent = '.lsrow{display:flex;gap:6px;align-items:stretch;margin-bottom:6px}.lsn{flex:1;display:flex;align-items:center;gap:10px;text-align:left;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg2);color:var(--ink);font-size:14px;line-height:1.25;min-height:44px}.lsn:hover,.lsn:focus-visible{border-color:var(--ac)}.lsn i{width:10px;height:10px;border-radius:50%;flex:none}.lso{width:46px;flex:none;border:1px solid var(--line);border-radius:12px;background:var(--bg2);color:var(--ink);display:grid;place-items:center}.lso svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.lsrow.off .lsn{opacity:.45}.lsrow.off .lso{color:var(--ink3)}.lsrow.sel .lsn{border-color:var(--ac);box-shadow:inset 0 0 0 1px var(--ac)}#lsQ{width:100%;padding:11px 13px;border-radius:12px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:15px;margin:10px 0 8px}.lsreg{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:thin}.lsreg button{white-space:nowrap;padding:7px 12px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;color:var(--ink2)}.lsreg button.on{background:var(--ac);color:#1a1203;border-color:var(--ac);font-weight:700}.lsh{display:flex;justify-content:space-between;align-items:baseline}.lsh small{font-weight:500;color:var(--ink3);font-size:12px}.lsback{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;margin-bottom:10px;border-radius:999px;border:1px solid var(--line);color:var(--ink);font-size:13.5px;background:var(--bg2)}.lstudo{display:block;width:100%;padding:9px;margin-bottom:8px;border-radius:12px;border:1px dashed var(--ac);color:var(--ac);font-weight:700;font-size:13.5px}.lsvazio{color:var(--ink3);padding:14px 0}'; document.head.appendChild(st); }
+const REG_L = [['cab', 'Cabeça e pescoço'], ['tro', 'Tronco e coluna'], ['omb', 'Ombro e braço'], ['ant', 'Antebraço e mão'], ['qua', 'Quadril e coxa'], ['per', 'Perna e pé']];
+const ABAS_L = [['musculos', 'Músculos', 'var(--mus)'], ['ossos', 'Ossos', 'var(--osso)'], ['articulacoes', 'Ligamentos', '#d9c27a']];
+const regOsso = b => /rib$|sternum|Xiphoid|Vertebra [TL]|Costal cartilage|Sacrum|Coccyx/.test(b) ? 'tro' : /Clavicle|Scapula|Humerus/.test(b) ? 'omb' : /Radius|Ulna|of hand|metacarpal|Capitate|Hamate|Lunate|Pisiform|Scaphoid|Trapezium|Trapezoid|Triquetrum/.test(b) ? 'ant' : /Hip bone|Femur|Patella/.test(b) ? 'qua' : /Tibia|Fibula|of foot|metatarsal|Calcaneus|Talus|Cuboid|Navicular|cuneiform/.test(b) ? 'per' : 'cab';
+const REG_NOME = [[/abdomin|Linea alba|Rectus sheath|Diaphragm|ntercostal|Quadratus lumborum|Thoracolumbar|Serratus|Erector|Iliocostalis|Longissimus thoracis|Spinalis thoracis|Latissimus|Rhomboid|Pectoralis|Trapezius/i, 'tro'], [/hyoid|thyroid|Sternocleido|Scalen|Platysma|capitis|colli|cervicis|Levator scapulae/i, 'cab'], [/Psoas|Iliacus|Piriformis|Obturator|Gemellus|Quadratus femoris|Tensor fasciae|Iliotibial|Fascia lata/i, 'qua']];
+const semAcento = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const OLHO = ['<svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>', '<svg viewBox="0 0 24 24"><path d="M4 4l16 16M9.9 5.8A9.6 9.6 0 0 1 12 5.5C18.4 5.5 22 12 22 12a17 17 0 0 1-3.2 3.9M6.3 7.6A16.5 16.5 0 0 0 2 12s3.6 6.5 10 6.5c1.4 0 2.7-.3 3.8-.8"/></svg>'];
+function lstItens(c) {   // uma linha por estrutura (direita e esquerda juntas), com a região do corpo
+  if (LST.cache[c]) return LST.cache[c];
+  const ossos = Object.entries(MESH).filter(([, m]) => m.userData.camada === 'ossos').map(([n, m]) => [new THREE.Box3().setFromObject(m), regOsso(E[n].b)]);
+  const porBase = new Map(), v = new THREE.Vector3(), bx = new THREE.Box3();
+  for (const [n, e] of Object.entries(E)) { if (e.c !== c || !MESH[n]) continue; let it = porBase.get(e.b); if (!it) porBase.set(e.b, it = { b: e.b, t: e.n, nomes: [], n: null }); it.nomes.push(n); if (!it.n || (E[it.n].l === 'esquerdo' && e.l !== 'esquerdo')) it.n = n; }
+  const itens = [...porBase.values()].map(it => {
+    if (c === 'ossos') it.r = regOsso(it.b);
+    else if (REG_NOME.some(([re, r]) => re.test(it.b) && (it.r = r))) { /* região pelo nome: estruturas longas ou coladas em outro osso */ }
+    else { bx.setFromObject(MESH[it.n]).getCenter(v); let d = 1e9; for (const [b, r] of ossos) { const x = b.distanceToPoint(v); if (x < d) { d = x; it.r = r; } } }
+    it.s = semAcento(it.t); return it;
+  }).sort((a, b) => a.t.localeCompare(b.t, 'pt'));
+  return LST.cache[c] = itens;
+}
+function lstDesenhar() {
+  const el = $('lsL'); if (!el) return;
+  const cor = ABAS_L.find(a => a[0] === LST.aba)[2], q = semAcento(LST.q.trim()), todos = lstItens(LST.aba), itens = todos.filter(it => (!q || it.s.includes(q)) && (!LST.reg || it.r === LST.reg));
+  const limpo = !isolado && !oculto.size;
+  let h = limpo ? '' : '<button class="lstudo" data-m="tudo">⟲ Mostrar o modelo inteiro de novo</button>';
+  for (const [r, nome] of REG_L) { const g = itens.filter(it => it.r === r); if (!g.length) continue;
+    h += `<h3 class="lsh">${nome}<small>${g.length}</small></h3>` + g.map(it => { const off = it.nomes.every(n => oculto.has(n));
+      return `<div class="lsrow${off ? ' off' : ''}${it.nomes.includes(sel) ? ' sel' : ''}"><button class="lsn" data-b="${esc(it.b)}"><i style="background:${cor}"></i><span>${esc(it.t)}</span></button><button class="lso" data-o="${esc(it.b)}" aria-pressed="${!off}" aria-label="${off ? 'Mostrar' : 'Esconder'} ${esc(it.t)} no modelo" title="${off ? 'Mostrar' : 'Esconder'} no modelo">${OLHO[off ? 1 : 0]}</button></div>`; }).join(''); }
+  el.innerHTML = h + (itens.length ? '' : `<p class="lsvazio">Nada com esse nome em ${ABAS_L.find(a => a[0] === LST.aba)[1].toLowerCase()}. Confira a grafia ou procure em outra aba.</p>`);
+  const ct = $('lsCt'); if (ct) ct.textContent = `${itens.length} de ${todos.length}`;
+}
+async function mostrarLista(rolar) {
+  if (MOV.on) sairMov(false); if (AG.on) sairAg(false); limparDesvio();
+  document.querySelectorAll('#regioes .chip').forEach(b => b.classList.remove('on'));
+  if (LST.aba === 'articulacoes') { await garantir('articulacoes'); if (!visCamada.articulacoes) { visCamada.articulacoes = true; document.querySelector('[data-c=articulacoes]').classList.add('on'); aplicarVis(); } }
+  painelP('Lista de estruturas', '<span class="tag">atlas</span>ache pelo nome ou pela região', `
+    <div class="seg" id="lsAba" role="tablist">${ABAS_L.map(([k, t]) => `<button role="tab" aria-selected="${k === LST.aba}" data-aba="${k}" class="${k === LST.aba ? 'on' : ''}">${t}</button>`).join('')}</div>
+    <input id="lsQ" type="search" placeholder="Filtrar pelo nome…" autocomplete="off" aria-label="Filtrar a lista pelo nome" value="${esc(LST.q)}">
+    <div class="lsreg" id="lsReg"><button data-reg="" class="${LST.reg ? '' : 'on'}">Todas</button>${REG_L.map(([k, t]) => `<button data-reg="${k}" class="${k === LST.reg ? 'on' : ''}">${t}</button>`).join('')}</div>
+    <small style="color:var(--ink3);display:block;margin-bottom:2px"><span id="lsCt"></span> · toque no nome para ver no modelo · o olho esconde ou mostra</small>
+    <div id="lsL"></div>`);
+  LST.de = false; lstDesenhar(); if (rolar) $('pB').scrollTop = LST.rol;
+  $('lsQ').oninput = ev => { LST.q = ev.target.value; lstDesenhar(); };
+  $('pB').onclick = async ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.aba) { LST.aba = b.dataset.aba; LST.rol = 0; return mostrarLista(); }
+    if (b.dataset.reg !== undefined) { LST.reg = b.dataset.reg; $('lsReg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); return lstDesenhar(); }
+    if (b.dataset.m === 'tudo') { isolado = null; filtroInsercao = null; oculto.clear(); hist.length = 0; $('bVoltar').disabled = true; aplicarVis(); return lstDesenhar(); }
+    const it = lstItens(LST.aba).find(x => x.b === (b.dataset.o || b.dataset.b)); if (!it) return;
+    if (b.dataset.o) { const off = it.nomes.every(n => oculto.has(n)); it.nomes.forEach(n => off ? oculto.delete(n) : oculto.add(n)); aplicarVis(); const rl = $('pB').scrollTop; lstDesenhar(); $('pB').scrollTop = rl; return; }
+    // toque no nome: mostra só essa estrutura sobre o esqueleto (assim as profundas também aparecem), aproxima a câmera e abre a ficha
+    it.nomes.forEach(n => oculto.delete(n)); filtroInsercao = null;
+    if (!visCamada[LST.aba]) { visCamada[LST.aba] = true; document.querySelector(`[data-c=${LST.aba}]`).classList.add('on'); }
+    isolado = LST.aba === 'ossos' ? new Set() : new Set(it.nomes); aplicarVis();
+    LST.rol = $('pB').scrollTop; $('pB').onclick = null; LST.de = true; abrir(it.n); focar(it.n, LST.aba === 'ossos' ? 2.8 : 2.4);
+  };
+}
+function lstVoltar() { if (!LST.de || $('lsBack')) return; $('pB').insertAdjacentHTML('afterbegin', '<button class="lsback" id="lsBack">← Voltar à lista</button>'); $('lsBack').onclick = () => mostrarLista(true); }
+$('bLista').onclick = () => mostrarLista();
 function abrirTab(t) {
   delete $('tabbar').dataset.fixa;
   if (t === 'regioes') return abaRegioes();
@@ -3636,4 +3779,4 @@ setTimeout(() => POSE.pele(), 1200);
 // link direto para o simulador: ?sim=agachamento, terra, stiff, pelvica, remada ou puxada
 { const q = new URLSearchParams(location.search).get('sim'); if (q !== null) setTimeout(() => mostrarSim(EX_S[q] ? q : 'agachamento'), 400); }
 aplicarVis();
-window.__cm = { scene, TEC, mostrarTecidos, tecItem, SIM, EX_S, BRACOS_S, mostrarSim, defLivre, simDef, simMedir, simTabela, MESH, E, abrir, mostrarCreditos, mostrarLivre, mostrarMarcha, enquadrarP, puxPrep, PUX_V, PUX_C, US, JS, LV, irPreset, mudarL, PRESETS_L, get iso() { return isolado; }, regiao, MOV, setAng: a => { MOV.ang = a; movAplicar(); }, entrarMov, padrao, cam, ctl, THREE, AG, entrarAg, POSE, PE: typeof PE !== 'undefined' ? PE : null, mostrarMov, mostrarArt, listaMov, mostrarDesvio, mostrarFerramenta, listaPostura, setK: k => { AG.k = k; agAplicar(); } };
+window.__cm = { scene, FIB, fibras, mostrarLista, focar, TEC, mostrarTecidos, tecItem, SIM, EX_S, BRACOS_S, mostrarSim, defLivre, simDef, simMedir, simTabela, MESH, E, abrir, mostrarCreditos, mostrarLivre, mostrarMarcha, enquadrarP, puxPrep, PUX_V, PUX_C, US, JS, LV, irPreset, mudarL, PRESETS_L, get iso() { return isolado; }, regiao, MOV, setAng: a => { MOV.ang = a; movAplicar(); }, entrarMov, padrao, cam, ctl, THREE, AG, entrarAg, POSE, PE: typeof PE !== 'undefined' ? PE : null, mostrarMov, mostrarArt, listaMov, mostrarDesvio, mostrarFerramenta, listaPostura, setK: k => { AG.k = k; agAplicar(); } };
