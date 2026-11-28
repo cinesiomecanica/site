@@ -982,6 +982,7 @@ function* pesosGen(d) {
     const { id, w, campo, ix } = malhas[mi], n = w.length / 3, idx = new Uint8Array(n * 4), wt = new Float32Array(n * 4), fv = new Float32Array(n).fill(-1), fixo = new Uint8Array(n);
     // eixo mais longo do músculo e os ossos em cada ponta
     let modo = 'prox', ax = 1, lo = 0, hi = 1, sA = 0, sB = 0, ptA = [0, 0, 0], ptB = [0, 0, 0], raioB = 0.15;
+    let serr = null; { const sz = /^Serratus anterior.*\.([rl])$/.exec(id), es = sz && idxSeg.get('esc' + (sz[1] === 'r' ? 'd' : 'e')); if (es != null) { let z0 = 1e9, z1 = -1e9; for (let i = 0; i < n; i++) { const z = w[3 * i + 2]; if (z < z0) z0 = z; if (z > z1) z1 = z; } const zc = (z0 + z1) / 2, th = new Float32Array(n); let t0 = 1e9, t1 = -1e9; for (let i = 0; i < n; i++) { const t = Math.atan2(w[3 * i + 2] - zc, Math.abs(w[3 * i])); th[i] = t; if (t < t0) t0 = t; if (t > t1) t1 = t; } serr = { es, th, t0, t1 }; } }
     if (!campo) {
       const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
       for (let i = 0; i < n; i++) for (let a = 0; a < 3; a++) { const v = w[3 * i + a]; if (v < mn[a]) mn[a] = v; if (v > mx[a]) mx[a] = v; }
@@ -1015,6 +1016,7 @@ function* pesosGen(d) {
         fj = 0; ff = 0; if (y >= FY[U]) { fj = U - 1; ff = 1; } else if (y > FY[0]) { while (y >= FY[fj + 1]) fj++; ff = (y - FY[fj]) / (FY[fj + 1] - FY[fj]); }
       }
       if (dedo) {}
+      else if (serr) { const f = suave(0.5, 0.96, (serr.t1 - serr.th[i]) / (serr.t1 - serr.t0 || 1)); campoAdd(1 - f); seg1(serr.es, f); }   // as digitações ficam nas costelas; só o trecho de trás, sob a escápula, vai com ela
       else if (campo) campoAdd(1);
       else if (modo === 'rigido') seg1(sA, 1);
       else if (modo === 'cadeia') { prox(x, y, z, 1, true); converter(x, y, z); }
@@ -1041,6 +1043,24 @@ function* pesosGen(d) {
       for (let k = 0; k < 4; k++) wt[4 * i + k] /= tot || 1;
     }
     let fib = null;
+    // suaviza as fibras pela malha (vizinhos colados, inclusive nas costuras da textura): fibras vizinhas quase paralelas, sem faixas
+    const alisarFib = () => { if (!ix || !fib) return; {
+          const rep = new Int32Array(n), mp = new Map();
+          for (let i = 0; i < n; i++) { const k = Math.round(w[3 * i] * 2e4) + ',' + Math.round(w[3 * i + 1] * 2e4) + ',' + Math.round(w[3 * i + 2] * 2e4); const r = mp.get(k); if (r === undefined) { mp.set(k, i); rep[i] = i; } else rep[i] = r; }
+          const viz = Array.from({ length: n }, () => []);
+          for (let t = 0; t < ix.length; t += 3) for (let e = 0; e < 3; e++) { const a = rep[ix[t + e]], b = rep[ix[t + (e + 1) % 3]]; if (a !== b) { viz[a].push(b); viz[b].push(a); } }
+          let op = fib.op, ip = fib.ip; const tmpO = new Float32Array(n * 3), tmpI = new Float32Array(n * 3);
+          for (let it = 0; it < 14; it++) {
+            tmpO.set(op); tmpI.set(ip);
+            for (let i = 0; i < n; i++) { if (rep[i] !== i || fib.s[i] < -5) continue; let c = 1, ox = op[3 * i], oy = op[3 * i + 1], oz = op[3 * i + 2], qx = ip[3 * i], qy = ip[3 * i + 1], qz = ip[3 * i + 2];
+              for (const j of viz[i]) { if (fib.s[j] < -5) continue; ox += op[3 * j]; oy += op[3 * j + 1]; oz += op[3 * j + 2]; qx += ip[3 * j]; qy += ip[3 * j + 1]; qz += ip[3 * j + 2]; c++; }
+              tmpO[3 * i] = ox / c; tmpO[3 * i + 1] = oy / c; tmpO[3 * i + 2] = oz / c; tmpI[3 * i] = qx / c; tmpI[3 * i + 1] = qy / c; tmpI[3 * i + 2] = qz / c; }
+            op.set(tmpO); ip.set(tmpI);
+          }
+          for (let i = 0; i < n; i++) { const r = rep[i]; if (r !== i && fib.s[r] > -5) { for (let a = 0; a < 3; a++) { op[3 * i + a] = op[3 * r + a]; ip[3 * i + a] = ip[3 * r + a]; } } }
+          for (let i = 0; i < n; i++) { if (fib.s[i] < -5) continue; const ox = op[3 * i], oy = op[3 * i + 1], oz = op[3 * i + 2], cx = ip[3 * i] - ox, cy = ip[3 * i + 1] - oy, cz = ip[3 * i + 2] - oz, L2 = cx * cx + cy * cy + cz * cz;
+            if (L2 > 1e-6) fib.s[i] = Math.max(-0.2, Math.min(1.2, ((w[3 * i] - ox) * cx + (w[3 * i + 1] - oy) * cy + (w[3 * i + 2] - oz) * cz) / L2)); }
+        } };
     // músculos em leque (ombro, quadril, tronco → membro): cada vértice vira um ponto de uma "fibra" que liga a origem (fixa no osso de origem)
     // ao tendão (no osso de inserção). A GPU estica a fibra em linha reta, sem dobras nem abas.
     const pq = parMap.get(sA + '|' + sB);
@@ -1056,6 +1076,8 @@ function* pesosGen(d) {
       const inI = new Uint8Array(n), Ii = [], Ai = [], dI = new Float32Array(n).fill(9);   // tendão: vértices encostados no osso de inserção
       for (let i = 0; i < n; i++) { const t = (w[3 * i + ax] - lo) / (hi - lo || 1), sv = inv ? 1 - t : t; if (sv > 0.4) dI[i] = dSeg(w[3 * i], w[3 * i + 1], w[3 * i + 2], sI); }
       for (const lim of [0.012, 0.02, 0.03]) { Ii.length = 0; for (let i = 0; i < n; i++) if (dI[i] < lim) Ii.push(i); if (Ii.length >= 8) break; }
+      if (/^Ascending part of trapezius/.test(id) && Ii.length > 8) {   // trapézio inferior: desliza sobre a borda medial da escápula e só se prende na raiz da espinha (a ponta mais lateral)
+        let x1 = 0; for (const i of Ii) x1 = Math.max(x1, Math.abs(w[3 * i])); const K = Ii.filter(i => Math.abs(w[3 * i]) >= x1 - 0.03); if (K.length >= 8) { Ii.length = 0; Ii.push(...K); } }
       for (const i of Ii) { inI[i] = 1; fixo[i] = 1; }
       if (Ii.length >= 3 && Ii.length < n * 0.6) {
         const amostra = (a, m) => { const st = Math.max(1, Math.floor(a.length / m)), r = []; for (let k = 0; k < a.length; k += st) r.push(a[k]); return r; };
@@ -1080,28 +1102,12 @@ function* pesosGen(d) {
           fib.s[i] = Math.max(-0.2, Math.min(1.2, ((x - ox) * cx + (y - oy) * cy + (z - oz) * cz) / L2));
           fib.op[3 * i] = ox; fib.op[3 * i + 1] = oy; fib.op[3 * i + 2] = oz; fib.ip[3 * i] = qx; fib.ip[3 * i + 1] = qy; fib.ip[3 * i + 2] = qz;
         }
-        // suaviza as fibras pela malha (vizinhos colados, inclusive nas costuras da textura): fibras vizinhas quase paralelas, sem faixas
-        if (ix) {
-          const rep = new Int32Array(n), mp = new Map();
-          for (let i = 0; i < n; i++) { const k = Math.round(w[3 * i] * 2e4) + ',' + Math.round(w[3 * i + 1] * 2e4) + ',' + Math.round(w[3 * i + 2] * 2e4); const r = mp.get(k); if (r === undefined) { mp.set(k, i); rep[i] = i; } else rep[i] = r; }
-          const viz = Array.from({ length: n }, () => []);
-          for (let t = 0; t < ix.length; t += 3) for (let e = 0; e < 3; e++) { const a = rep[ix[t + e]], b = rep[ix[t + (e + 1) % 3]]; if (a !== b) { viz[a].push(b); viz[b].push(a); } }
-          let op = fib.op, ip = fib.ip; const tmpO = new Float32Array(n * 3), tmpI = new Float32Array(n * 3);
-          for (let it = 0; it < 14; it++) {
-            tmpO.set(op); tmpI.set(ip);
-            for (let i = 0; i < n; i++) { if (rep[i] !== i || fib.s[i] < -5) continue; let c = 1, ox = op[3 * i], oy = op[3 * i + 1], oz = op[3 * i + 2], qx = ip[3 * i], qy = ip[3 * i + 1], qz = ip[3 * i + 2];
-              for (const j of viz[i]) { if (fib.s[j] < -5) continue; ox += op[3 * j]; oy += op[3 * j + 1]; oz += op[3 * j + 2]; qx += ip[3 * j]; qy += ip[3 * j + 1]; qz += ip[3 * j + 2]; c++; }
-              tmpO[3 * i] = ox / c; tmpO[3 * i + 1] = oy / c; tmpO[3 * i + 2] = oz / c; tmpI[3 * i] = qx / c; tmpI[3 * i + 1] = qy / c; tmpI[3 * i + 2] = qz / c; }
-            op.set(tmpO); ip.set(tmpI);
-          }
-          for (let i = 0; i < n; i++) { const r = rep[i]; if (r !== i && fib.s[r] > -5) { for (let a = 0; a < 3; a++) { op[3 * i + a] = op[3 * r + a]; ip[3 * i + a] = ip[3 * r + a]; } } }
-          for (let i = 0; i < n; i++) { if (fib.s[i] < -5) continue; const ox = op[3 * i], oy = op[3 * i + 1], oz = op[3 * i + 2], cx = ip[3 * i] - ox, cy = ip[3 * i + 1] - oy, cz = ip[3 * i + 2] - oz, L2 = cx * cx + cy * cy + cz * cz;
-            if (L2 > 1e-6) fib.s[i] = Math.max(-0.2, Math.min(1.2, ((w[3 * i] - ox) * cx + (w[3 * i + 1] - oy) * cy + (w[3 * i + 2] - oz) * cz) / L2)); }
-        }
+        alisarFib();
         modo += '+leque';
         if (pq && /deltoid|spinatus|Teres minor|Subscapularis|Gluteus maximus/i.test(id)) {
           // capa da cabeça do úmero: em vez de esticar em linha reta, gira em volta do centro da cabeça (ossos intermediários), fração pela fibra
-          for (let i = 0; i < n; i++) { if (inI[i]) continue; const f = suave(0.0, 0.85, Math.max(0, fib.s[i])); nc = 0; cadeia(pq, pq.a === sI ? 1 - f : f, 1, w[3 * i], w[3 * i + 1], w[3 * i + 2], false);
+          const cuff = /spinatus|Teres minor|Subscapularis/i.test(id);   // manguito: o ventre fica colado na escápula; só o trecho que cruza a articulação gira com o úmero
+          for (let i = 0; i < n; i++) { if (inI[i]) continue; const f = cuff ? suave(0.5, 1.0, Math.max(0, fib.s[i])) : suave(0.0, 0.85, Math.max(0, fib.s[i])); nc = 0; cadeia(pq, pq.a === sI ? 1 - f : f, 1, w[3 * i], w[3 * i + 1], w[3 * i + 2], false);
             let tot = 0; idx.fill(0, 4 * i, 4 * i + 4); wt.fill(0, 4 * i, 4 * i + 4);
             for (let k = 0; k < 4; k++) { let m = -1; for (let t = 0; t < nc; t++) if (cp[t] > 0 && (m < 0 || cp[t] > cp[m])) m = t; if (m < 0) break; idx[4 * i + k] = cb[m]; wt[4 * i + k] = cp[m]; tot += cp[m]; cp[m] = -1; }
             for (let k = 0; k < 4; k++) wt[4 * i + k] /= tot || 1; nc = 0; }
@@ -1126,6 +1132,7 @@ function* pesosGen(d) {
         }
       }
     }
+    if (serr) modo = 'serratil';
     if (!campo && !fib && ix && modo !== 'rigido') suavizar(n, w, ix, idx, wt, fixo);   // (os leques já têm as fibras suavizadas)
     yield { id, idx, wt, fib, prog: (mi + 1) / malhas.length, diag: modo + ' ' + (['campo', ...segs][sA] || sA) + '>' + (['campo', ...segs][sB] || sB) };
   }
@@ -1292,13 +1299,29 @@ const POSE = (() => {
   }
   // Deformador de fibras: cada ponto da faixa de transição fica numa reta entre a origem (que segue os ossos da origem) e a inserção
   // (que segue o osso da inserção). A reta gira e estica com o movimento; o músculo afina quando alonga e engrossa quando encurta.
-  function materialFibra(om, lim) {
-    const mat = om.clone(); mat.color = om.color; mat.emissive = om.emissive; const uLim = { value: new THREE.Vector4(...lim) };
+  const TX = { v: { value: Array.from({ length: 16 }, () => new THREE.Vector3(0, 1, 1)) }, y: { value: new THREE.Vector4(0, 1, 0, 2) }, ok: false, j: 0 };   // y: altura inicial, 1/passo, ligado, expoente da superelipse
+  function torax() {
+    if (TX.ok) return; TX.ok = true; const N = 16, pts = []; let y0 = 1e9, y1 = -1e9;
+    for (const n in MESH) { const m = MESH[n]; if (m.userData.camada !== 'ossos' || !/\brib\b|sternum/i.test(((E[n] && E[n].b) || '') + ' ' + n)) continue; const w = mundo(m); pts.push(w); for (let i = 1; i < w.length; i += 3) { if (w[i] < y0) y0 = w[i]; if (w[i] > y1) y1 = w[i]; } }
+    if (!pts.length) return; const dy = (y1 - y0) / (N - 1), z0 = new Float32Array(N).fill(1e9), z1 = new Float32Array(N).fill(-1e9), xm = new Float32Array(N);
+    for (const w of pts) for (let i = 0; i < w.length; i += 3) { const j = Math.round((w[i + 1] - y0) / dy); for (let q = Math.max(0, j - 1); q <= Math.min(N - 1, j + 1); q++) { if (w[i + 2] < z0[q]) z0[q] = w[i + 2]; if (w[i + 2] > z1[q]) z1[q] = w[i + 2]; const ax = Math.abs(w[i]); if (ax > xm[q]) xm[q] = ax; } }
+    for (let j = 0; j < N; j++) TX.v.value[j].set((z0[j] + z1[j]) / 2, Math.max(0.03, xm[j]), Math.max(0.03, (z1[j] - z0[j]) / 2));
+    // o gradil costal é mais "quadrado" que uma elipse: escolhe o expoente da superelipse que melhor encosta no contorno de fora das costelas
+    const env = []; for (let j = 2; j < N - 2; j++) { const e = TX.v.value[j], best = new Float32Array(48), bx = new Float32Array(48), bz = new Float32Array(48);
+      for (const w of pts) for (let i = 0; i < w.length; i += 3) { if (Math.abs((w[i + 1] - y0) / dy - j) > 0.5) continue; const ux = Math.abs(w[i]) / e.y, uz = (w[i + 2] - e.x) / e.z, q = Math.hypot(ux, uz), b = Math.min(47, Math.floor((Math.atan2(uz, ux) / Math.PI + 0.5) * 48)); if (q > best[b]) { best[b] = q; bx[b] = ux; bz[b] = Math.abs(uz); } }
+      for (let b = 0; b < 48; b++) if (best[b] > 0.8) env.push([bx[b], bz[b]]); }
+    let pe = 2, err = 1e9; for (let p = 2; p <= 4.01; p += 0.25) { let e2 = 0; for (const [ux, uz] of env) e2 += ((ux ** p + uz ** p) ** (1 / p) - 1) ** 2; if (e2 < err) { err = e2; pe = p; } }
+    TX.y.value.set(y0, 1 / dy, 0, pe); TX.pe = pe; const ym = (y0 + y1) / 2; TX.j = S.FY.reduce((b, y, j) => Math.abs(y - ym) < Math.abs(S.FY[b] - ym) ? j : b, 0);
+  }
+  function materialFibra(om, lim, torx) {
+    const mat = om.clone(); mat.color = om.color; mat.emissive = om.emissive; const uLim = { value: new THREE.Vector4(...lim) }; torax();
     mat.onBeforeCompile = sh => {
-      sh.uniforms.uFibW = uLim;
+      sh.uniforms.uFibW = uLim; sh.uniforms.uTx = TX.v; sh.uniforms.uTxY = TX.y; sh.uniforms.uTxK = { value: torx ? 1 : 0 };
       sh.vertexShader = sh.vertexShader
         .replace('#include <skinning_pars_vertex>', `#include <skinning_pars_vertex>
-attribute vec3 aOP; attribute vec3 aIP; attribute float aIB; attribute float aS; uniform vec4 uFibW;
+attribute vec3 aOP; attribute vec3 aIP; attribute float aIB; attribute float aS; uniform vec4 uFibW; uniform vec3 uTx[16]; uniform vec4 uTxY; uniform float uTxK;
+vec3 txE(float y) { float t = clamp((y - uTxY.x) * uTxY.y, 0.0, 14.999); int j = int(floor(t)); return mix(uTx[j], uTx[j + 1], t - float(j)); }
+float txQ(vec3 p) { vec3 e = txE(p.y); vec2 d = abs(vec2(p.x / e.y, (p.z - e.x) / e.z)) + 1e-5; return pow(pow(d.x, uTxY.w) + pow(d.y, uTxY.w), 1.0 / uTxY.w); }
 vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) * sn + ax * dot(ax, v) * (1.0 - cs); }`)
         .replace('#include <skinnormal_vertex>', `#include <skinnormal_vertex>
   vec3 fibPos = vec3(0.0); bool fib = aS > -5.0;
@@ -1318,12 +1341,18 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
     float wi = smoothstep(uFibW.z, uFibW.w, aS), wo = 1.0 - smoothstep(uFibW.x, uFibW.y, aS);
     fibPos = mix(fibPos, (MoB * vec4(position, 1.0)).xyz, wo); objectNormal = normalize(mix(objectNormal, mat3(MoB) * normal, wo));
     fibPos = mix(fibPos, (MiB * vec4(position, 1.0)).xyz, wi); objectNormal = normalize(mix(objectNormal, mat3(MiB) * normal, wi));
+    // caixa torácica: o músculo esticado contorna as costelas em vez de atravessá-las (só com o tronco parado)
+    if (uTxK * uTxY.z > 0.5) {
+      float tt = (fibPos.y - uTxY.x) * uTxY.y, some = smoothstep(-1.5, 0.0, tt) * (1.0 - smoothstep(13.5, 15.5, tt)) * (1.0 - wi);
+      float q0 = txQ(position), qm = min(q0, 1.04 + 0.3 * clamp(q0 - 1.04, 0.0, 0.25)), q1 = max(txQ(fibPos), 0.2);
+      if (q1 < qm && some > 0.0) { vec3 e = txE(fibPos.y); float kk = mix(1.0, qm / q1, some); fibPos.x *= kk; fibPos.z = e.x + (fibPos.z - e.x) * kk; }
+    }
   }`)
         .replace('#include <skinning_vertex>', `#include <skinning_vertex>
   if (fib) transformed = fibPos;`);
       fibShader(sh, fibU(om));   // estrias das fibras: calculadas na forma de repouso, então acompanham o músculo deformado
     };
-    mat.customProgramCacheKey = () => 'fibra14';
+    mat.customProgramCacheKey = () => 'fibra16';
     return mat;
   }
   // cópia do músculo (ou costela) que a GPU deforma; o original fica escondido enquanto o motor está ativo
@@ -1341,7 +1370,7 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
       g.setAttribute('aOP', new THREE.BufferAttribute(r.fib.op, 3)); g.setAttribute('aIP', new THREE.BufferAttribute(r.fib.ip, 3));
       g.setAttribute('aIB', new THREE.BufferAttribute(r.fib.ib, 1)); g.setAttribute('aS', new THREE.BufferAttribute(r.fib.s, 1));
       // músculos que cobrem a cabeça do úmero (deltoide e manguito): quase todo o corpo do músculo acompanha o úmero
-      mat = materialFibra(m.material, /deltoid|spinatus|Teres minor|Subscapularis/i.test(E[n].b || n) ? (window.__DL || [0, 0.12, 0.15, 0.55]) : [0, 0.22, 0.62, 1]);
+      mat = materialFibra(m.material, /deltoid|spinatus|Teres minor|Subscapularis/i.test(E[n].b || n) ? (window.__DL || [0, 0.12, 0.15, 0.55]) : /misto.*>(esc|cla)[de]$/.test(r.diag || '') ? [0, 0.22, 0.86, 1] : [0, 0.22, 0.62, 1], /misto/.test(r.diag || ''));
     }
     c = new THREE.SkinnedMesh(g, mat); c.bind(S.esq, new M4()); c.receiveShadow = true; c.castShadow = !r.fib;   // os músculos deformados pelas fibras ainda não projetam sombra (a sombra não acompanharia a deformação)
     if (r.fib) { const om = m.material; c.onBeforeRender = () => { mat.opacity = om.opacity; mat.transparent = om.transparent; mat.depthWrite = om.depthWrite; mat.emissiveIntensity = om.emissiveIntensity; mat.visible = om.visible; }; } c.frustumCulled = false; c.name = n; c.visible = false; c.userData.camada = m.userData.camada;
@@ -1457,6 +1486,7 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
     S.M = M;
     S.SEGN.forEach((s, i) => S.bones[i].matrixWorld.copy(M[s] || I));
     S.FM.forEach((e, j) => S.bones[S.SEGN.length + j].matrixWorld.fromArray(e));
+    if (TX.ok && S.FM[TX.j]) { const e = S.FM[TX.j]; let d = 0; for (let q = 0; q < 16; q++) d += Math.abs(e[q] - (q % 5 === 0 ? 1 : 0)); TX.y.value.z = d < 1e-4 ? 1 : 0; }
     // intermediários: o segmento de cima girado 1/4, 1/2 e 3/4 do caminho até o de baixo, em torno do pivô da articulação
     const base = S.SEGN.length + S.FM.length, q = new THREE.Quaternion(), qi = new THREE.Quaternion(), pos = new V3(), esc = new V3(), Ma = new M4(), Rl = new M4();
     for (const p of S.pares) {
@@ -1592,7 +1622,7 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
   }
   const alvos = () => S.ativo ? [...S.usar].map(n => S.clones.get(n)).filter(c => c && c.visible) : [];
   return { S, pele, iniciar, sair, sinc, aplicar, animar, tick, rotulos, leituraHTML, atualizarFerr, alvos, setTodos(on) { usar(S.musculos || [], on); aplicar(S.k); },
-    get ativo() { return S.ativo; }, get pronta() { return !!S.peleOk; }, parar() { S.anim = null; },
+    get TX() { return TX; }, get ativo() { return S.ativo; }, get pronta() { return !!S.peleOk; }, parar() { S.anim = null; },
     // laço contínuo (marcha): fase de 0 a 1 que avança sozinha; pausa e velocidade sem perder a fase
     laco(dur, fase) { S.anim = null; S.loop = { t: performance.now(), dur, fase: fase ?? (S.loop ? S.loop.fase : 0), pausa: false }; },
     pausarLaco(p) { if (S.loop) { S.loop.pausa = p; S.loop.t = performance.now(); } },
