@@ -978,10 +978,35 @@ function* pesosGen(d) {
     }
     idx.set(I0); wt.set(W0);
   }
+  // malha soldada (vértices repetidos nas costuras contam como um só) e seus vizinhos
+  function grafo(n, w, ix) {
+    const rep = new Int32Array(n), mp = new Map();
+    for (let i = 0; i < n; i++) { const k = Math.round(w[3 * i] * 2e4) + ',' + Math.round(w[3 * i + 1] * 2e4) + ',' + Math.round(w[3 * i + 2] * 2e4); const r = mp.get(k); if (r === undefined) { mp.set(k, i); rep[i] = i; } else rep[i] = r; }
+    const cont = new Int32Array(n), ini = new Int32Array(n + 1);
+    for (let t = 0; t < ix.length; t += 3) for (let e = 0; e < 3; e++) { const a = rep[ix[t + e]], b = rep[ix[t + (e + 1) % 3]]; if (a !== b) { cont[a]++; cont[b]++; } }
+    for (let i = 0; i < n; i++) ini[i + 1] = ini[i] + cont[i];
+    const viz = new Int32Array(ini[n]), pos = ini.slice(0, n);
+    for (let t = 0; t < ix.length; t += 3) for (let e = 0; e < 3; e++) { const a = rep[ix[t + e]], b = rep[ix[t + (e + 1) % 3]]; if (a !== b) { viz[pos[a]++] = b; viz[pos[b]++] = a; } }
+    return { rep, ini, viz };
+  }
+  // distância medida pela superfície do músculo até um conjunto de vértices (e qual deles é o mais próximo)
+  function geod(G, w, n, fontes) {
+    const { rep, ini, viz } = G, d = new Float64Array(n).fill(1e9), src = new Int32Array(n).fill(-1), hp = [], hd = [];
+    const push = (v, dv) => { let i = hp.length; hp.push(v); hd.push(dv); while (i > 0) { const p = (i - 1) >> 1; if (hd[p] <= dv) break; hp[i] = hp[p]; hd[i] = hd[p]; i = p; } hp[i] = v; hd[i] = dv; };
+    for (const f of fontes) { const r = rep[f]; if (d[r] > 0) { d[r] = 0; src[r] = r; push(r, 0); } }
+    while (hp.length) {
+      const v = hp[0], dv = hd[0], lv = hp.pop(), ld = hd.pop(), m = hp.length;
+      if (m) { let i = 0; for (;;) { let c = 2 * i + 1; if (c >= m) break; if (c + 1 < m && hd[c + 1] < hd[c]) c++; if (hd[c] >= ld) break; hp[i] = hp[c]; hd[i] = hd[c]; i = c; } hp[i] = lv; hd[i] = ld; }
+      if (dv > d[v]) continue;
+      for (let q = ini[v]; q < ini[v + 1]; q++) { const u = viz[q], nd = dv + Math.hypot(w[3 * u] - w[3 * v], w[3 * u + 1] - w[3 * v + 1], w[3 * u + 2] - w[3 * v + 2]); if (nd < d[u]) { d[u] = nd; src[u] = src[v]; push(u, nd); } }
+    }
+    return { d, src };
+  }
   for (let mi = 0; mi < malhas.length; mi++) {
     const { id, w, campo, ix } = malhas[mi], n = w.length / 3, idx = new Uint8Array(n * 4), wt = new Float32Array(n * 4), fv = new Float32Array(n).fill(-1), fixo = new Uint8Array(n);
     // eixo mais longo do músculo e os ossos em cada ponta
     let modo = 'prox', ax = 1, lo = 0, hi = 1, sA = 0, sB = 0, ptA = [0, 0, 0], ptB = [0, 0, 0], raioB = 0.15;
+    let bi = null, soTronco = false;   // bi: músculo de duas articulações que nasce na pelve, na escápula ou na clavícula
     let serr = null; { const sz = /^Serratus anterior.*\.([rl])$/.exec(id), es = sz && idxSeg.get('esc' + (sz[1] === 'r' ? 'd' : 'e')); if (es != null) { let z0 = 1e9, z1 = -1e9; for (let i = 0; i < n; i++) { const z = w[3 * i + 2]; if (z < z0) z0 = z; if (z > z1) z1 = z; } const zc = (z0 + z1) / 2, th = new Float32Array(n); let t0 = 1e9, t1 = -1e9; for (let i = 0; i < n; i++) { const t = Math.atan2(w[3 * i + 2] - zc, Math.abs(w[3 * i])); th[i] = t; if (t < t0) t0 = t; if (t > t1) t1 = t; } serr = { es, th, t0, t1 }; } }
     if (!campo) {
       const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
@@ -1003,8 +1028,12 @@ function* pesosGen(d) {
         const ca = A.c === '*' ? B.c : A.c, dif = Math.abs(A.n - B.n);
         if (sA === sB) modo = 'rigido';
         else if (dif <= 1) modo = 'eixo';
-        else { modo = 'cadeia'; const n0 = Math.min(A.n, B.n), n1 = Math.max(A.n, B.n); info.forEach((f, s) => { if (f.t === 'membro' && (f.c === ca || f.c === '*') && f.n >= n0 && f.n <= n1) livre[s] = 1; }); }
+        else { modo = 'cadeia'; const n0 = Math.min(A.n, B.n), n1 = Math.max(A.n, B.n), o0 = A.n === n0 ? sA : sB;
+          if (n0 === 0 && [...parMap.values()].some(p => p.a === o0 && (p.ombro || p.quad))) bi = { o: o0 };   // a primeira articulação (ombro ou quadril) é resolvida por fibras retas; o resto da cadeia, pelos ossos seguintes
+          info.forEach((f, s) => { if (f.t === 'membro' && (f.c === ca || f.c === '*') && f.n >= (bi ? 1 : n0) && f.n <= n1) livre[s] = 1; }); }
       } else if (A.t !== B.t) { modo = 'misto'; info.forEach((f, s) => { if (f.t === 'tronco' || f.c === '*') livre[s] = 1; }); if (A.t === 'membro') { const t = sA; sA = sB; sB = t; lo = hi + (hi = lo, 0); ptB = tip(0); } }
+      else if (A.t === 'tronco' && B.t === 'tronco') { soTronco = true; info.forEach((f, s) => { if (f.t === 'tronco' || f.c === '*') livre[s] = 1; }); }   // músculo do tronco: nunca segue a escápula nem o braço, mesmo passando por baixo deles
+      if (/^Iliopectineal arch/.test(id)) { const pv = idxSeg.get('pelve'); if (pv != null) { modo = 'rigido'; sA = sB = pv; bi = null; } }   // faixa de fáscia da pelve
     }
     for (let i = 0; i < n; i++) {
       const x = w[3 * i], y = w[3 * i + 1], z = w[3 * i + 2]; nc = 0;
@@ -1036,7 +1065,7 @@ function* pesosGen(d) {
           const dB = Math.hypot(x - ptB[0], y - ptB[1], z - ptB[2]), fm = 1 - suave(0.015, raioB, dB);
           if (p) cadeia(p, fm, 1, x, y, z, true); else { prox(x, y, z, 1 - fm, true); seg1(sB, fm); } fv[i] = fm;
         }
-        else { prox(x, y, z, 1, false); converter(x, y, z); }
+        else { prox(x, y, z, 1, soTronco); converter(x, y, z); }
       }
       let tot = 0;
       for (let k = 0; k < 4; k++) { let m = -1; for (let t = 0; t < nc; t++) if (cp[t] > 0 && (m < 0 || cp[t] > cp[m])) m = t; if (m < 0) break; idx[4 * i + k] = cb[m]; wt[4 * i + k] = cp[m]; tot += cp[m]; cp[m] = -1; }
@@ -1064,47 +1093,79 @@ function* pesosGen(d) {
     // músculos em leque (ombro, quadril, tronco → membro): cada vértice vira um ponto de uma "fibra" que liga a origem (fixa no osso de origem)
     // ao tendão (no osso de inserção). A GPU estica a fibra em linha reta, sem dobras nem abas.
     const pq = parMap.get(sA + '|' + sB);
-    if (sB > 0 && sA !== sB && (modo === 'misto' || (modo === 'eixo' && pq && (pq.ombro || pq.quad))) && (info[sB].c !== '*' || /^Gluteus maximus/.test(id))) {   // glúteo máximo: fibras da pelve ao fêmur, enroladas em volta do quadril
+    if (bi || (sB > 0 && sA !== sB && (modo === 'misto' || (modo === 'eixo' && pq && (pq.ombro || pq.quad))) && (info[sB].c !== '*' || /^Gluteus maximus/.test(id)))) {   // glúteo máximo: fibras da pelve ao fêmur, enroladas em volta do quadril
       let sI = sB, ptI = ptB, inv = false;
       const nv = s => info[s].t === 'membro' ? info[s].n : -1;   // tronco/pelve conta como o osso mais proximal
       if (modo === 'eixo' && nv(sA) > nv(sB)) { sI = sA; ptI = ptA; inv = true; }
+      if (bi) { inv = bi.o !== sA; sI = inv ? sA : sB; }
       const cI = info[sI].c, nI = info[sI].n;
       livre.fill(0); info.forEach((f, s) => { if (f.t === 'tronco' || f.c === '*' || (modo === 'eixo' && f.c === cI && f.n < nI)) livre[s] = 1; });   // origem: tronco/pelve (e, no eixo, o osso de cima da cadeia)
       const dSeg = (x, y, z, sg) => { const ix = Math.floor(x / cel), iy = Math.floor(y / cel), iz = Math.floor(z / cel); let b = 1e9;
         for (let a = -1; a <= 1; a++) for (let bb = -1; bb <= 1; bb++) for (let c = -1; c <= 1; c++) { const arr = mapa.get(chave(ix + a, iy + bb, iz + c)); if (!arr) continue; for (const q of arr) if (ps[q] === sg) { const dx = px[q] - x, dy = py[q] - y, dz = pz[q] - z, d2 = dx * dx + dy * dy + dz * dz; if (d2 < b) b = d2; } }
         return Math.sqrt(b); };
       const inI = new Uint8Array(n), Ii = [], Ai = [], dI = new Float32Array(n).fill(9);   // tendão: vértices encostados no osso de inserção
-      for (let i = 0; i < n; i++) { const t = (w[3 * i + ax] - lo) / (hi - lo || 1), sv = inv ? 1 - t : t; if (sv > 0.4) dI[i] = dSeg(w[3 * i], w[3 * i + 1], w[3 * i + 2], sI); }
+      for (let i = 0; i < n; i++) { const t = (w[3 * i + ax] - lo) / (hi - lo || 1), sv = inv ? 1 - t : t; if (bi) { if (sv > 0.5) dI[i] = 0; } else if (sv > 0.4) dI[i] = dSeg(w[3 * i], w[3 * i + 1], w[3 * i + 2], sI); }   // duas articulações: a metade de baixo faz o papel do tendão (segue os ossos seguintes)
       for (const lim of [0.012, 0.02, 0.03]) { Ii.length = 0; for (let i = 0; i < n; i++) if (dI[i] < lim) Ii.push(i); if (Ii.length >= 8) break; }
       if (/^Ascending part of trapezius/.test(id) && Ii.length > 8) {   // trapézio inferior: desliza sobre a borda medial da escápula e só se prende na raiz da espinha (a ponta mais lateral)
         let x1 = 0; for (const i of Ii) x1 = Math.max(x1, Math.abs(w[3 * i])); const K = Ii.filter(i => Math.abs(w[3 * i]) >= x1 - 0.03); if (K.length >= 8) { Ii.length = 0; Ii.push(...K); } }
       for (const i of Ii) { inI[i] = 1; fixo[i] = 1; }
-      if (Ii.length >= 3 && Ii.length < n * 0.6) {
+      if (Ii.length >= 3 && Ii.length < n * (bi ? 0.9 : 0.6)) {
         const amostra = (a, m) => { const st = Math.max(1, Math.floor(a.length / m)), r = []; for (let k = 0; k < a.length; k += st) r.push(a[k]); return r; };
         for (let i = 0; i < n; i++) Ai.push(i);
         const Si = amostra(Ii, 500), Sa = amostra(Ai, 1600), cacheO = new Map();
         const pesoO = j => { let r = cacheO.get(j); if (r) return r; const x = w[3 * j], y = w[3 * j + 1], z = w[3 * j + 2]; nc = 0;
           fj = 0; ff = 0; if (y >= FY[U]) { fj = U - 1; ff = 1; } else if (y > FY[0]) { while (y >= FY[fj + 1]) fj++; ff = (y - FY[fj]) / (FY[fj + 1] - FY[fj]); }
-          prox(x, y, z, 1, true); r = { i: [0, 0, 0, 0], w: [0, 0, 0, 0] }; let tot = 0;
+          if (bi) seg1(bi.o, 1); else if (modo === 'eixo') seg1(sI === sA ? sB : sA, 1); else prox(x, y, z, 1, true);   // eixo (escápula → úmero, pelve → fêmur): a origem é o próprio osso de origem
+          r = { i: [0, 0, 0, 0], w: [0, 0, 0, 0] }; let tot = 0;
           for (let k = 0; k < 4; k++) { let m = -1; for (let t = 0; t < nc; t++) if (cp[t] > 0 && (m < 0 || cp[t] > cp[m])) m = t; if (m < 0) break; r.i[k] = cb[m]; r.w[k] = cp[m]; tot += cp[m]; cp[m] = -1; }
           for (let k = 0; k < 4; k++) r.w[k] /= tot || 1; nc = 0; cacheO.set(j, r); return r; };
-        fib = { op: new Float32Array(n * 3), ip: new Float32Array(n * 3), ib: new Float32Array(n).fill(sI - 1), s: new Float32Array(n).fill(-9) };
-        for (let i = 0; i < n; i++) {
-          if (inI[i]) { idx.fill(0, 4 * i, 4 * i + 4); wt.fill(0, 4 * i, 4 * i + 4); idx[4 * i] = sI - 1; wt[4 * i] = 1; continue; }   // tendão: preso ao osso de inserção
-          const x = w[3 * i], y = w[3 * i + 1], z = w[3 * i + 2];
-          let q = Si[0], bd = 1e9; for (const j of Si) { const dx = w[3 * j] - x, dy = w[3 * j + 1] - y, dz = w[3 * j + 2] - z, d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; q = j; } }
-          const qx = w[3 * q], qy = w[3 * q + 1], qz = w[3 * q + 2], ux = x - qx, uy = y - qy, uz = z - qz, Lq = Math.hypot(ux, uy, uz); if (Lq < 1e-4) continue;
-          let o = i, best = Lq;   // origem: o ponto mais distante do músculo na direção tendão → vértice
-          for (const j of Sa) { const vx = w[3 * j] - qx, vy = w[3 * j + 1] - qy, vz = w[3 * j + 2] - qz, L = Math.hypot(vx, vy, vz); if (L <= best) continue; if ((vx * ux + vy * uy + vz * uz) / (L * Lq) > 0.992) { best = L; o = j; } }
-          const ox = w[3 * o], oy = w[3 * o + 1], oz = w[3 * o + 2], cx = qx - ox, cy = qy - oy, cz = qz - oz, L2 = cx * cx + cy * cy + cz * cz;
-          const r = pesoO(o); for (let k = 0; k < 4; k++) { idx[4 * i + k] = r.i[k]; wt[4 * i + k] = r.w[k]; }
-          if (L2 < 1e-6) continue;
-          fib.s[i] = Math.max(-0.2, Math.min(1.2, ((x - ox) * cx + (y - oy) * cy + (z - oz) * cz) / L2));
-          fib.op[3 * i] = ox; fib.op[3 * i + 1] = oy; fib.op[3 * i + 2] = oz; fib.ip[3 * i] = qx; fib.ip[3 * i + 1] = qy; fib.ip[3 * i + 2] = qz;
+        fib = { op: new Float32Array(n * 3), ip: new Float32Array(n * 3), ib: new Float32Array(n * 4), iw: new Float32Array(n * 4), s: new Float32Array(n).fill(-9) };
+        for (let i = 0; i < n; i++) { fib.ib[4 * i] = sI - 1; fib.iw[4 * i] = 1; }   // referencial da inserção: um osso, ou a mistura de ossos do ponto de chegada
+        if (ix) {
+          // Cada fibra é traçada pela superfície do músculo: do tendão (inserção) para longe, até a ponta onde o músculo acaba (origem).
+          // A posição na fibra (0 na origem, 1 no tendão) vem da distância pela superfície, que é contínua: vizinhos têm fibras vizinhas.
+          const G = grafo(n, w, ix), rep = G.rep, ini = G.ini, viz = G.viz, gd = geod(G, w, n, Ii), d = gd.d, src = gd.src, ord = [];
+          for (let i = 0; i < n; i++) { if (rep[i] !== i) continue; ord.push(i);
+            if (d[i] > 1e8) { let q = Si[0], bd = 1e9; const x = w[3 * i], y = w[3 * i + 1], z = w[3 * i + 2]; for (const j of Si) { const dx = w[3 * j] - x, dy = w[3 * j + 1] - y, dz = w[3 * j + 2] - z, d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; q = j; } } d[i] = Math.sqrt(bd); src[i] = rep[q]; } }   // pedaço solto, sem tendão: linha reta
+          ord.sort((p, q) => d[q] - d[p]); const fim = new Int32Array(n);
+          for (const v of ord) { let b = -1, br = 0.6; for (let q = ini[v]; q < ini[v + 1]; q++) { const u = viz[q]; if (d[u] <= d[v]) continue; const r = (d[u] - d[v]) / (Math.hypot(w[3 * u] - w[3 * v], w[3 * u + 1] - w[3 * v + 1], w[3 * u + 2] - w[3 * v + 2]) || 1e-9); if (r > br) { br = r; b = u; } } fim[v] = b < 0 ? v : fim[b]; }
+          for (let it = 0; it < 3; it++) for (const v of ord) { let b = v; for (let q = ini[v]; q < ini[v + 1]; q++) { const u = viz[q]; if (d[fim[u]] > d[fim[b]]) b = u; } if (d[fim[v]] < 0.75 * d[fim[b]]) fim[v] = fim[b]; }   // fibra que parou cedo demais segue a vizinha
+          const Dm = new Float32Array(n);
+          for (const v of ord) { const e = fim[v], q = src[v]; Dm[v] = d[e]; if (inI[v] || Dm[v] < 1e-4) continue; fib.s[v] = 0; fib.op[3 * v] = w[3 * e]; fib.op[3 * v + 1] = w[3 * e + 1]; fib.op[3 * v + 2] = w[3 * e + 2]; fib.ip[3 * v] = w[3 * q]; fib.ip[3 * v + 1] = w[3 * q + 1]; fib.ip[3 * v + 2] = w[3 * q + 2]; }
+          { const op = fib.op, ip = fib.ip, tO = new Float32Array(n * 3), tI = new Float32Array(n * 3), tD = new Float32Array(n);   // alisa origem, inserção e comprimento da fibra entre vizinhos
+            for (let it = 0; it < 24; it++) { tO.set(op); tI.set(ip); tD.set(Dm);
+              for (const v of ord) { if (fib.s[v] < -5) continue; let c = 1, ox = op[3 * v], oy = op[3 * v + 1], oz = op[3 * v + 2], qx = ip[3 * v], qy = ip[3 * v + 1], qz = ip[3 * v + 2], dm = Dm[v];
+                for (let q = ini[v]; q < ini[v + 1]; q++) { const j = viz[q]; if (fib.s[j] < -5) continue; ox += op[3 * j]; oy += op[3 * j + 1]; oz += op[3 * j + 2]; qx += ip[3 * j]; qy += ip[3 * j + 1]; qz += ip[3 * j + 2]; dm += Dm[j]; c++; }
+                tO[3 * v] = ox / c; tO[3 * v + 1] = oy / c; tO[3 * v + 2] = oz / c; tI[3 * v] = qx / c; tI[3 * v + 1] = qy / c; tI[3 * v + 2] = qz / c; tD[v] = dm / c; }
+              op.set(tO); ip.set(tI); Dm.set(tD); } }
+          for (let i = 0; i < n; i++) {
+            const v = rep[i];
+            if (inI[i] || inI[v]) { if (!bi) { idx.fill(0, 4 * i, 4 * i + 4); wt.fill(0, 4 * i, 4 * i + 4); idx[4 * i] = sI - 1; wt[4 * i] = 1; } fib.s[i] = -9; continue; }   // tendão: preso ao osso de inserção (duas articulações: continua com os ossos da cadeia)
+            if (fib.s[v] < -5) { fib.s[i] = -9; continue; }
+            if (bi) { const q = src[v]; for (let k = 0; k < 4; k++) { fib.ib[4 * i + k] = idx[4 * q + k]; fib.iw[4 * i + k] = wt[4 * q + k]; } }
+            const r = pesoO(fim[v]); for (let k = 0; k < 4; k++) { idx[4 * i + k] = r.i[k]; wt[4 * i + k] = r.w[k]; }
+            for (let a = 0; a < 3; a++) { fib.op[3 * i + a] = fib.op[3 * v + a]; fib.ip[3 * i + a] = fib.ip[3 * v + a]; }
+            if (i !== v) fib.s[i] = 0;
+          }
+          for (let i = 0; i < n; i++) if (fib.s[i] > -5) { const v = rep[i]; fib.s[i] = Math.max(0, Math.min(1, 1 - d[v] / Math.max(Dm[v], 1e-4))); }
+        } else {
+          for (let i = 0; i < n; i++) {
+            if (inI[i]) { idx.fill(0, 4 * i, 4 * i + 4); wt.fill(0, 4 * i, 4 * i + 4); idx[4 * i] = sI - 1; wt[4 * i] = 1; continue; }   // tendão: preso ao osso de inserção
+            const x = w[3 * i], y = w[3 * i + 1], z = w[3 * i + 2];
+            let q = Si[0], bd = 1e9; for (const j of Si) { const dx = w[3 * j] - x, dy = w[3 * j + 1] - y, dz = w[3 * j + 2] - z, d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; q = j; } }
+            const qx = w[3 * q], qy = w[3 * q + 1], qz = w[3 * q + 2], ux = x - qx, uy = y - qy, uz = z - qz, Lq = Math.hypot(ux, uy, uz); if (Lq < 1e-4) continue;
+            let o = i, best = Lq;   // origem: o ponto mais distante do músculo na direção tendão → vértice
+            for (const j of Sa) { const vx = w[3 * j] - qx, vy = w[3 * j + 1] - qy, vz = w[3 * j + 2] - qz, L = Math.hypot(vx, vy, vz); if (L <= best) continue; if ((vx * ux + vy * uy + vz * uz) / (L * Lq) > 0.992) { best = L; o = j; } }
+            const ox = w[3 * o], oy = w[3 * o + 1], oz = w[3 * o + 2], cx = qx - ox, cy = qy - oy, cz = qz - oz, L2 = cx * cx + cy * cy + cz * cz;
+            const r = pesoO(o); for (let k = 0; k < 4; k++) { idx[4 * i + k] = r.i[k]; wt[4 * i + k] = r.w[k]; }
+            if (L2 < 1e-6) continue;
+            fib.s[i] = Math.max(-0.2, Math.min(1.2, ((x - ox) * cx + (y - oy) * cy + (z - oz) * cz) / L2));
+            fib.op[3 * i] = ox; fib.op[3 * i + 1] = oy; fib.op[3 * i + 2] = oz; fib.ip[3 * i] = qx; fib.ip[3 * i + 1] = qy; fib.ip[3 * i + 2] = qz;
+          }
+          alisarFib();
         }
-        alisarFib();
         modo += '+leque';
-        if (pq && /deltoid|spinatus|Teres minor|Subscapularis|Gluteus maximus/i.test(id)) {
+        if (pq && /Gluteus maximus/i.test(id)) {
           // capa da cabeça do úmero: em vez de esticar em linha reta, gira em volta do centro da cabeça (ossos intermediários), fração pela fibra
           const cuff = /spinatus|Teres minor|Subscapularis/i.test(id);   // manguito: o ventre fica colado na escápula; só o trecho que cruza a articulação gira com o úmero
           for (let i = 0; i < n; i++) { if (inI[i]) continue; const f = cuff ? suave(0.5, 1.0, Math.max(0, fib.s[i])) : suave(0.0, 0.85, Math.max(0, fib.s[i])); nc = 0; cadeia(pq, pq.a === sI ? 1 - f : f, 1, w[3 * i], w[3 * i + 1], w[3 * i + 2], false);
@@ -1120,7 +1181,7 @@ function* pesosGen(d) {
       if (O.length >= 3 && Ip.length >= 3) {
         const amostra = a => { const st = Math.max(1, Math.floor(a.length / 450)), r = []; for (let k = 0; k < a.length; k += st) r.push(a[k]); return r; };
         const So = amostra(O), Si = amostra(Ip), perto = (S, x, y, z) => { let b = S[0], bd = 1e9; for (const j of S) { const dx = w[3 * j] - x, dy = w[3 * j + 1] - y, dz = w[3 * j + 2] - z, d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; b = j; } } return b; };
-        fib = { op: new Float32Array(n * 3), ip: new Float32Array(n * 3), ib: new Float32Array(n).fill(sB - 1), s: new Float32Array(n).fill(-9) };
+        fib = { op: new Float32Array(n * 3), ip: new Float32Array(n * 3), ib: new Float32Array(n * 4), iw: new Float32Array(n * 4), s: new Float32Array(n).fill(-9) }; for (let i = 0; i < n; i++) { fib.ib[4 * i] = sB - 1; fib.iw[4 * i] = 1; }
         for (let i = 0; i < n; i++) {
           const f = fv[i]; if (f <= 0.03 || f >= 0.97 || f < 0) continue;
           const x = w[3 * i], y = w[3 * i + 1], z = w[3 * i + 2], o = perto(So, x, y, z), q = perto(Si, x, y, z);
@@ -1289,7 +1350,7 @@ const POSE = (() => {
       const fim = () => { S.peleOk = true; S.onProg = null; ok(); };
       const naPagina = () => { S.pesos.clear(); const it = pesosGen(dados()); const passo = () => { const t0 = performance.now(); let r = it.next(); while (!r.done) { receber(r.value); if (performance.now() - t0 > 14) return setTimeout(passo, 0); r = it.next(); } fim(); }; passo(); };
       let wk = null;
-      try { wk = new Worker(URL.createObjectURL(new Blob([`const pesosGen = ${pesosGen.toString()};\nonmessage = e => { for (const r of pesosGen(e.data)) postMessage(r, [r.idx.buffer, r.wt.buffer, ...(r.fib ? [r.fib.op.buffer, r.fib.ip.buffer, r.fib.ib.buffer, r.fib.s.buffer] : [])]); postMessage({ fim: true }); };`], { type: 'text/javascript' }))); } catch (e) { wk = null; }
+      try { wk = new Worker(URL.createObjectURL(new Blob([`const pesosGen = ${pesosGen.toString()};\nonmessage = e => { for (const r of pesosGen(e.data)) postMessage(r, [r.idx.buffer, r.wt.buffer, ...(r.fib ? [r.fib.op.buffer, r.fib.ip.buffer, r.fib.ib.buffer, r.fib.iw.buffer, r.fib.s.buffer] : [])]); postMessage({ fim: true }); };`], { type: 'text/javascript' }))); } catch (e) { wk = null; }
       if (!wk) return naPagina();
       wk.onmessage = e => { if (e.data.fim) { wk.terminate(); fim(); } else receber(e.data); };
       wk.onerror = () => { wk.terminate(); naPagina(); };
@@ -1299,7 +1360,7 @@ const POSE = (() => {
   }
   // Deformador de fibras: cada ponto da faixa de transição fica numa reta entre a origem (que segue os ossos da origem) e a inserção
   // (que segue o osso da inserção). A reta gira e estica com o movimento; o músculo afina quando alonga e engrossa quando encurta.
-  const TX = { v: { value: Array.from({ length: 16 }, () => new THREE.Vector3(0, 1, 1)) }, y: { value: new THREE.Vector4(0, 1, 0, 2) }, ok: false, j: 0 };   // y: altura inicial, 1/passo, ligado, expoente da superelipse
+  const TX = { v: { value: Array.from({ length: 16 }, () => new THREE.Vector3(0, 1, 1)) }, y: { value: new THREE.Vector4(0, 1, 0, 2) }, m: { value: new THREE.Matrix4() }, mi: { value: new THREE.Matrix4() }, ok: false, j: 0 };   // y: altura inicial, 1/passo, ligado, expoente da superelipse
   function torax() {
     if (TX.ok) return; TX.ok = true; const N = 16, pts = []; let y0 = 1e9, y1 = -1e9;
     for (const n in MESH) { const m = MESH[n]; if (m.userData.camada !== 'ossos' || !/\brib\b|sternum/i.test(((E[n] && E[n].b) || '') + ' ' + n)) continue; const w = mundo(m); pts.push(w); for (let i = 1; i < w.length; i += 3) { if (w[i] < y0) y0 = w[i]; if (w[i] > y1) y1 = w[i]; } }
@@ -1314,12 +1375,12 @@ const POSE = (() => {
     TX.y.value.set(y0, 1 / dy, 0, pe); TX.pe = pe; const ym = (y0 + y1) / 2; TX.j = S.FY.reduce((b, y, j) => Math.abs(y - ym) < Math.abs(S.FY[b] - ym) ? j : b, 0);
   }
   function materialFibra(om, lim, torx) {
-    const mat = om.clone(); mat.color = om.color; mat.emissive = om.emissive; const uLim = { value: new THREE.Vector4(...lim) }; torax();
+    const mat = om.clone(); mat.color = om.color; mat.emissive = om.emissive; const uLim = { value: new THREE.Vector4(...lim) }; torax(); mat.userData.fibLim = lim; mat.userData.torx = !!torx;
     mat.onBeforeCompile = sh => {
-      sh.uniforms.uFibW = uLim; sh.uniforms.uTx = TX.v; sh.uniforms.uTxY = TX.y; sh.uniforms.uTxK = { value: torx ? 1 : 0 };
+      sh.uniforms.uFibW = uLim; sh.uniforms.uTx = TX.v; sh.uniforms.uTxY = TX.y; sh.uniforms.uTxM = TX.m; sh.uniforms.uTxMi = TX.mi; sh.uniforms.uTxK = { value: torx ? 1 : 0 };
       sh.vertexShader = sh.vertexShader
         .replace('#include <skinning_pars_vertex>', `#include <skinning_pars_vertex>
-attribute vec3 aOP; attribute vec3 aIP; attribute float aIB; attribute float aS; uniform vec4 uFibW; uniform vec3 uTx[16]; uniform vec4 uTxY; uniform float uTxK;
+attribute vec3 aOP; attribute vec3 aIP; attribute vec4 aIB; attribute vec4 aIW; attribute float aS; uniform vec4 uFibW; uniform vec3 uTx[16]; uniform vec4 uTxY; uniform float uTxK; uniform mat4 uTxM, uTxMi;
 vec3 txE(float y) { float t = clamp((y - uTxY.x) * uTxY.y, 0.0, 14.999); int j = int(floor(t)); return mix(uTx[j], uTx[j + 1], t - float(j)); }
 float txQ(vec3 p) { vec3 e = txE(p.y); vec2 d = abs(vec2(p.x / e.y, (p.z - e.x) / e.z)) + 1e-5; return pow(pow(d.x, uTxY.w) + pow(d.y, uTxY.w), 1.0 / uTxY.w); }
 vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) * sn + ax * dot(ax, v) * (1.0 - cs); }`)
@@ -1327,32 +1388,34 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
   vec3 fibPos = vec3(0.0); bool fib = aS > -5.0;
   if (fib) {
     vec4 o4 = vec4(aOP, 1.0);
-    mat4 MoB = boneMatX * skinWeight.x + boneMatY * skinWeight.y + boneMatZ * skinWeight.z + boneMatW * skinWeight.w, MiB = getBoneMatrix(aIB);
+    mat4 MoB = boneMatX * skinWeight.x + boneMatY * skinWeight.y + boneMatZ * skinWeight.z + boneMatW * skinWeight.w, MiB = getBoneMatrix(aIB.x) * aIW.x + getBoneMatrix(aIB.y) * aIW.y + getBoneMatrix(aIB.z) * aIW.z + getBoneMatrix(aIB.w) * aIW.w;
     vec3 Op = (MoB * o4).xyz;
     vec3 Ipt = (MiB * vec4(aIP, 1.0)).xyz;
     vec3 c0 = aIP - aOP, c1 = Ipt - Op; float L0 = max(length(c0), 1e-5), L1 = max(length(c1), 1e-5);
-    vec3 u0 = c0 / L0, u1 = c1 / L1, ax = cross(u0, u1); float sn = length(ax), cs = dot(u0, u1);
+    mat3 Ro = mat3(MoB);   // a fibra parte do referencial do osso de origem: se o membro inteiro gira, ela gira junto por inteiro
+    vec3 c0r = Ro * c0; vec3 u0 = c0r / max(length(c0r), 1e-5), u1 = c1 / L1, ax = cross(u0, u1); float sn = length(ax), cs = dot(u0, u1);
     ax = sn > 1e-6 ? ax / sn : vec3(1.0, 0.0, 0.0);
     float th = atan(sn, cs) * clamp(aS, 0.0, 1.0); sn = sin(th); cs = cos(th);   // perto da origem quase não gira; perto do tendão gira tudo
-    vec3 d = position - (aOP + aS * c0);
+    vec3 d = Ro * (position - (aOP + aS * c0));
     fibPos = Op + aS * c1 + fibRot(d, ax, sn, cs) * mix(1.0, clamp(sqrt(L0 / L1), 0.8, 1.35), clamp(aS, 0.0, 1.0));
-    objectNormal = fibRot(normal, ax, sn, cs);
+    objectNormal = fibRot(normalize(Ro * normal), ax, sn, cs);
     // nas pontas, a fibra entrega o controle ao osso: perto do tendão o músculo gira junto com o osso de inserção, perto da origem com o de origem
     float wi = smoothstep(uFibW.z, uFibW.w, aS), wo = 1.0 - smoothstep(uFibW.x, uFibW.y, aS);
     fibPos = mix(fibPos, (MoB * vec4(position, 1.0)).xyz, wo); objectNormal = normalize(mix(objectNormal, mat3(MoB) * normal, wo));
     fibPos = mix(fibPos, (MiB * vec4(position, 1.0)).xyz, wi); objectNormal = normalize(mix(objectNormal, mat3(MiB) * normal, wi));
-    // caixa torácica: o músculo esticado contorna as costelas em vez de atravessá-las (só com o tronco parado)
+    // caixa torácica: o músculo esticado contorna as costelas em vez de atravessá-las (medido no referencial do tórax, que pode estar inclinado)
     if (uTxK * uTxY.z > 0.5) {
-      float tt = (fibPos.y - uTxY.x) * uTxY.y, some = smoothstep(-1.5, 0.0, tt) * (1.0 - smoothstep(13.5, 15.5, tt)) * (1.0 - wi);
-      float q0 = txQ(position), qm = min(q0, 1.04 + 0.3 * clamp(q0 - 1.04, 0.0, 0.25)), q1 = max(txQ(fibPos), 0.2);
-      if (q1 < qm && some > 0.0) { vec3 e = txE(fibPos.y); float kk = mix(1.0, qm / q1, some); fibPos.x *= kk; fibPos.z = e.x + (fibPos.z - e.x) * kk; }
+      vec3 pl = (uTxMi * vec4(fibPos, 1.0)).xyz;
+      float tt = (pl.y - uTxY.x) * uTxY.y, some = smoothstep(-1.5, 0.0, tt) * (1.0 - smoothstep(13.5, 15.5, tt)) * (1.0 - wi);
+      float q0 = txQ(position), qm = min(q0, 1.04 + 0.3 * clamp(q0 - 1.04, 0.0, 0.25)), q1 = max(txQ(pl), 0.2);
+      if (q1 < qm && some > 0.0) { vec3 e = txE(pl.y); float kk = mix(1.0, qm / q1, some); pl.x *= kk; pl.z = e.x + (pl.z - e.x) * kk; fibPos = (uTxM * vec4(pl, 1.0)).xyz; }
     }
   }`)
         .replace('#include <skinning_vertex>', `#include <skinning_vertex>
   if (fib) transformed = fibPos;`);
       fibShader(sh, fibU(om));   // estrias das fibras: calculadas na forma de repouso, então acompanham o músculo deformado
     };
-    mat.customProgramCacheKey = () => 'fibra16';
+    mat.customProgramCacheKey = () => 'fibra19';
     return mat;
   }
   // cópia do músculo (ou costela) que a GPU deforma; o original fica escondido enquanto o motor está ativo
@@ -1368,9 +1431,9 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
     let mat = m.material;
     if (r.fib) {
       g.setAttribute('aOP', new THREE.BufferAttribute(r.fib.op, 3)); g.setAttribute('aIP', new THREE.BufferAttribute(r.fib.ip, 3));
-      g.setAttribute('aIB', new THREE.BufferAttribute(r.fib.ib, 1)); g.setAttribute('aS', new THREE.BufferAttribute(r.fib.s, 1));
+      g.setAttribute('aIB', new THREE.BufferAttribute(r.fib.ib, 4)); g.setAttribute('aIW', new THREE.BufferAttribute(r.fib.iw, 4)); g.setAttribute('aS', new THREE.BufferAttribute(r.fib.s, 1));
       // músculos que cobrem a cabeça do úmero (deltoide e manguito): quase todo o corpo do músculo acompanha o úmero
-      mat = materialFibra(m.material, /deltoid|spinatus|Teres minor|Subscapularis/i.test(E[n].b || n) ? (window.__DL || [0, 0.12, 0.15, 0.55]) : /misto.*>(esc|cla)[de]$/.test(r.diag || '') ? [0, 0.22, 0.86, 1] : [0, 0.22, 0.62, 1], /misto/.test(r.diag || ''));
+      mat = materialFibra(m.material, /spinatus|Teres minor|Subscapularis/i.test(E[n].b || n) ? [0, 0.55, 0.8, 1] : /deltoid/i.test(E[n].b || n) ? [0, 0.15, 0.5, 0.95] : /misto.*>(esc|cla)[de]$/.test(r.diag || '') ? [0, 0.22, 0.86, 1] : [0, 0.22, 0.62, 1], /Latissimus|trapezius|Rhomboid|pectoralis major/i.test(E[n].b || n));   // só os grandes músculos que cobrem o gradil costal contornam as costelas
     }
     c = new THREE.SkinnedMesh(g, mat); c.bind(S.esq, new M4()); c.receiveShadow = true; c.castShadow = !r.fib;   // os músculos deformados pelas fibras ainda não projetam sombra (a sombra não acompanharia a deformação)
     if (r.fib) { const om = m.material; c.onBeforeRender = () => { mat.opacity = om.opacity; mat.transparent = om.transparent; mat.depthWrite = om.depthWrite; mat.emissiveIntensity = om.emissiveIntensity; mat.visible = om.visible; }; } c.frustumCulled = false; c.name = n; c.visible = false; c.userData.camada = m.userData.camada;
@@ -1486,7 +1549,7 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
     S.M = M;
     S.SEGN.forEach((s, i) => S.bones[i].matrixWorld.copy(M[s] || I));
     S.FM.forEach((e, j) => S.bones[S.SEGN.length + j].matrixWorld.fromArray(e));
-    if (TX.ok && S.FM[TX.j]) { const e = S.FM[TX.j]; let d = 0; for (let q = 0; q < 16; q++) d += Math.abs(e[q] - (q % 5 === 0 ? 1 : 0)); TX.y.value.z = d < 1e-4 ? 1 : 0; }
+    if (TX.ok && S.FM[TX.j]) { TX.m.value.fromArray(S.FM[TX.j]); TX.mi.value.copy(TX.m.value).invert(); TX.y.value.z = 1; }
     // intermediários: o segmento de cima girado 1/4, 1/2 e 3/4 do caminho até o de baixo, em torno do pivô da articulação
     const base = S.SEGN.length + S.FM.length, q = new THREE.Quaternion(), qi = new THREE.Quaternion(), pos = new V3(), esc = new V3(), Ma = new M4(), Rl = new M4();
     for (const p of S.pares) {
