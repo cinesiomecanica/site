@@ -46,6 +46,8 @@ if (SOMBRA.on) {
   const chao = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.ShadowMaterial({ opacity: 0.38 })); chao.rotation.x = -Math.PI / 2; chao.position.y = 0.001; chao.receiveShadow = true; chao.raycast = () => {}; scene.add(chao);
 }
 const sombrear = () => { SOMBRA.suja = true; };
+const NITIDO = { on: false, t: 0, pode: (() => { try { return localStorage.getItem('cm-nitido') !== '0'; } catch (e) { return true; } })() };
+canvas.addEventListener('webglcontextlost', () => { if (NITIDO.on) { NITIDO.pode = false; try { localStorage.setItem('cm-nitido', '0'); } catch (e) {} } });   // se o aparelho não aguentar a imagem em resolução cheia, não tenta de novo
 // a luz principal acompanha a câmera (sempre de cima, um pouco à direita de quem olha): o modelo fica bem iluminado de frente, de lado e de costas.
 // No computador ela gira junto; no celular (ou em máquina lenta) só se acomoda quando o dedo solta, para não refazer a sombra a cada quadro.
 ctl.addEventListener('start', () => { SOMBRA.arrastando = true; }); ctl.addEventListener('end', () => { SOMBRA.arrastando = false; sujar(30); });
@@ -1317,7 +1319,7 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
   if (fib) transformed = fibPos;`);
       fibShader(sh, fibU(om));   // estrias das fibras: calculadas na forma de repouso, então acompanham o músculo deformado
     };
-    mat.customProgramCacheKey = () => 'fibra11';
+    mat.customProgramCacheKey = () => 'fibra12';
     return mat;
   }
   // cópia do músculo (ou costela) que a GPU deforma; o original fica escondido enquanto o motor está ativo
@@ -3648,7 +3650,7 @@ document.querySelector('.cred').addEventListener('click', mostrarCreditos);
 // vale igual em repouso, em postura e em movimento.
 function fibMaterial(m) {
   if (m.userData.fib) return; m.userData.fib = true; const U = fibU(m);
-  m.onBeforeCompile = sh => fibShader(sh, U); m.customProgramCacheKey = () => 'fib13'; m.needsUpdate = true;
+  m.onBeforeCompile = sh => fibShader(sh, U); m.customProgramCacheKey = () => 'fib14'; m.needsUpdate = true;
 }
 function relMaterial(m, forca) {   // realce do relevo para o que não é músculo (ossos, cartilagens, ligamentos)
   const u = { value: new THREE.Vector2(forca * (FIB.rel.value.x > 0 ? 1 : 0), 1 / 260) };
@@ -3670,20 +3672,20 @@ float fibN(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f
              mix(mix(fibH(i + vec3(0,0,1)), fibH(i + vec3(1,0,1)), f.x), mix(fibH(i + vec3(0,1,1)), fibH(i + vec3(1,1,1)), f.x), f.y), f.z); }
 float fibAlt(float x) { float a = fibN(vec3(x * 330.0, 0.37, 0.11)), b = fibN(vec3(x * 900.0 + 7.3, 0.37, 0.11)); float sulco = smoothstep(0.0, 0.34, abs(a - 0.5) * 2.0); return sulco * (0.82 + 0.18 * b); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-float fibh = 1.0, fibk = 0.0, fibt = 0.0, fibv = 0.0, fibk0 = 0.0, fibtk = 0.0, fibdx = 0.0, fibdy = 0.0;
+float fibh = 1.0, fibk = 0.0, fibkg = 0.0, fibt = 0.0, fibv = 0.0, fibk0 = 0.0, fibtk = 0.0, fibdx = 0.0, fibdy = 0.0;
 if (uFib > 0.0 && uFP.w > 1.5) {
   float x = vFibS.x, sm = vFibS.y * uFT.z * uFT.y;   // penados: os veios ficam inclinados em relação ao eixo pelo ângulo de penação
   if (uFT.x > 2.5) { float pz = uFT.w * 0.6667, xx = abs(mod(x, pz) - 0.5 * pz); fibt = 1.0 - smoothstep(0.0005, 0.0018, xx); x = xx + abs(sm); }   // multipenado: várias penas lado a lado
   else if (uFT.x > 1.5) { float x1 = x - uFT.w; fibt = 1.0 - smoothstep(0.0005, 0.0020, abs(x1)); x = abs(x1) + abs(sm); }   // bipenado: em pena, dos dois lados do tendão central
   else if (uFT.x > 0.5) x += sm;   // unipenado: todos para o mesmo lado
   float fdq = max(abs(dFdx(x)), abs(dFdy(x)));   // de longe os veios somem aos poucos, sem serrilhar: três tamanhos, cada um com a sua distância
-  fibk = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 330.0)); float fk2 = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 1100.0)); fibk0 = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 80.0));
+  fibk = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 330.0)); fibkg = uFib * (1.0 - smoothstep(0.09, 0.34, fdq * 330.0)); float fk2 = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 1100.0)); fibk0 = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 80.0));
   fibh = fibAlt(x); const float e = 0.0006; float gx = (fibAlt(x + e) - fibh) / e; fibdx = gx * dFdx(x); fibdy = gx * dFdy(x);
   float fl = fibN(vec3(x * 80.0 + 1.9, 0.37, 0.11));
   fibv = (fibN(vec3(x * 330.0, 0.37, 0.11)) - 0.5) * 0.6 * fibk + (fibN(vec3(x * 1100.0 + 3.7, 0.37, 0.11)) - 0.5) * 0.5 * fk2 + (fl - 0.5) * 0.55 * fibk0;
-  diffuseColor.rgb *= mix(1.0, 0.72 + 0.32 * fibh, fibk);
+  diffuseColor.rgb *= mix(1.0, 0.72 + 0.32 * fibh, fibkg);   // sulcos finos: só de perto, senão viram pontilhado
   diffuseColor.rgb = diffuseColor.rgb * (1.0 + (0.6 - 0.25 * uFP.x) * fibv) + vec3(0.17, 0.075, 0.065) * max(fibv, 0.0) * (1.0 - uFP.x);   // veios claros rosados entre os escuros (no tendão, só claro e escuro)
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.70, 0.63), 0.34 * fibt * fibk);   // linha clara: tendão no meio da pena
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.70, 0.63), 0.34 * fibt * fibkg);   // linha clara: tendão no meio da pena
   float te = vFibS.y; fibtk = (1.0 - uFP.x) * fibk0 * max(smoothstep(0.90 + 0.08 * fl, 1.02, te), 1.0 - smoothstep(-0.02, 0.10 - 0.08 * fl, te));   // perto das pontas, o vermelho passa para o tom claro do tendão, em línguas irregulares
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80, 0.66, 0.58) * (0.92 + 0.25 * fibv), 0.7 * fibtk); }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -3693,8 +3695,8 @@ if (uRel.x > 0.0) {   // realce do relevo que o modelo já traz esculpido (feixe
   vec3 rpx = dFdx(-vViewPosition), rpy = dFdy(-vViewPosition), rnx = dFdx(normal), rny = dFdy(normal);
   float curv = (dot(rnx, rpx) + dot(rny, rpy)) / max(dot(rpx, rpx) + dot(rpy, rpy), 1e-12);
   float rk = clamp(curv * uRel.y, -1.0, 1.0); diffuseColor.rgb *= max(0.42, 1.0 + uRel.x * (rk < 0.0 ? 1.25 * rk : 0.5 * rk)); }
-if (fibk > 0.0) { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition); vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1);
-  vec3 g = sign(det) * (fibdx * r1 + fibdy * r2); normal = normalize(abs(det) * normal - 0.00055 * fibk * g); }`);
+if (fibkg > 0.0) { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition); vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1);
+  vec3 g = sign(det) * (fibdx * r1 + fibdy * r2); normal = normalize(abs(det) * normal - 0.00055 * fibkg * g); }`);
 }
 async function fibDados() {   // baixa e abre modelo/fibras.bin uma vez; põe phi e psi em cada malha de músculo
   if (FIB.dados) return FIB.dados;
@@ -3846,7 +3848,12 @@ renderer.setAnimationLoop(() => {
   if (ctl.update()) sujar(2);
   if (luzPasso()) sujar(2);
   if (luzSegue()) sujar(2);
-  if (!voando && !posando && suja <= 0) return;
+  if (!voando && !posando && suja <= 0) {
+    // celular: enquanto mexe, desenha leve; meio segundo depois de parar, redesenha uma vez na resolução cheia da tela (imagem parada nítida)
+    if (CEL() && NITIDO.pode && !NITIDO.on && NITIDO.t && performance.now() - NITIDO.t > 450 && !MOV.on && !AG.on) { NITIDO.on = true; renderer.setPixelRatio(Math.min(devicePixelRatio, 3)); renderer.render(scene, cam); }
+    return;
+  }
+  NITIDO.t = performance.now(); if (NITIDO.on) { NITIDO.on = false; ajustarPixels(); }
   if (suja > 0) suja--;
   if (MOV.on) movQuadro(); if (AG.on) agQuadro(); if (POSE.ativo) POSE.rotulos();
   const comAO = !!(AO.comp && AO.on); HULL.saida(comAO);
@@ -3862,4 +3869,4 @@ setTimeout(() => POSE.pele(), 1200);
 // link direto para o simulador: ?sim=agachamento, terra, stiff, pelvica, remada ou puxada
 { const q = new URLSearchParams(location.search).get('sim'); if (q !== null) setTimeout(() => mostrarSim(EX_S[q] ? q : 'agachamento'), 400); }
 aplicarVis();
-window.__cm = { scene, renderer, LUZ, luzAplicar, SOMBRA, sol, ARQ, FIB, fibras, mostrarLista, focar, TEC, mostrarTecidos, tecItem, SIM, EX_S, BRACOS_S, mostrarSim, defLivre, simDef, simMedir, simTabela, MESH, E, abrir, mostrarCreditos, mostrarLivre, mostrarMarcha, enquadrarP, puxPrep, PUX_V, PUX_C, US, JS, LV, irPreset, mudarL, PRESETS_L, get iso() { return isolado; }, regiao, MOV, setAng: a => { MOV.ang = a; movAplicar(); }, entrarMov, padrao, cam, ctl, THREE, AG, entrarAg, POSE, PE: typeof PE !== 'undefined' ? PE : null, mostrarMov, mostrarArt, listaMov, mostrarDesvio, mostrarFerramenta, listaPostura, setK: k => { AG.k = k; agAplicar(); } };
+window.__cm = { scene, renderer, NITIDO, LUZ, luzAplicar, SOMBRA, sol, ARQ, FIB, fibras, mostrarLista, focar, TEC, mostrarTecidos, tecItem, SIM, EX_S, BRACOS_S, mostrarSim, defLivre, simDef, simMedir, simTabela, MESH, E, abrir, mostrarCreditos, mostrarLivre, mostrarMarcha, enquadrarP, puxPrep, PUX_V, PUX_C, US, JS, LV, irPreset, mudarL, PRESETS_L, get iso() { return isolado; }, regiao, MOV, setAng: a => { MOV.ang = a; movAplicar(); }, entrarMov, padrao, cam, ctl, THREE, AG, entrarAg, POSE, PE: typeof PE !== 'undefined' ? PE : null, mostrarMov, mostrarArt, listaMov, mostrarDesvio, mostrarFerramenta, listaPostura, setK: k => { AG.k = k; agAplicar(); } };
