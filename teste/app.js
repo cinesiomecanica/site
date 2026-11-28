@@ -26,7 +26,7 @@ const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
 // versão celular: menos pixels por quadro (o celular esquenta menos e a bateria dura mais)
 const CEL = () => document.documentElement.classList.contains('cel');
-const ajustarPixels = () => renderer.setPixelRatio(Math.min(devicePixelRatio, CEL() ? 1.5 : 2));
+const ajustarPixels = () => renderer.setPixelRatio(Math.min(devicePixelRatio, CEL() ? 1.25 : 2));   // celular em movimento: leve; parado, a imagem é refeita na resolução cheia (NITIDO)
 ajustarPixels();
 renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
 const scene = new THREE.Scene(); renderer.setClearColor(0x000000, 0);   // o fundo vem do CSS (gradiente + malha)
@@ -37,9 +37,9 @@ const sol = new THREE.DirectionalLight('#fff6ea', 2.0); sol.position.set(1.5, 3,
 const rim = new THREE.DirectionalLight('#a8dcff', 0.9); rim.position.set(-2, 2, -2.5); scene.add(rim);   // contraluz fria, só para recortar a silhueta
 const cam_l = new THREE.DirectionalLight('#ffffff', 0.35); cam.add(cam_l); scene.add(cam);
 // sombra da luz principal: um músculo faz sombra no outro e o corpo no chão (dá volume e "peso"). O mapa só é refeito quando algo muda de lugar ou de visibilidade.
-const SOMBRA = { on: !/[?&]sombra=0/.test(location.search), suja: true, az: 0, arrastando: false, lento: false, t: 0, n: 0 };
+const SOMBRA = { on: !/[?&]sombra=0/.test(location.search), suja: true, mov: 0, az: 0, arrastando: false, lento: false, t: 0, n: 0 };
 if (SOMBRA.on) {
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = CEL() ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
   sol.castShadow = true; sol.target.position.set(0, 0.9, 0); scene.add(sol.target); sol.position.set(1.5, 3.9, 2.5);
   const sc = sol.shadow.camera; sc.left = -1.15; sc.right = 1.15; sc.top = 1.2; sc.bottom = -1.2; sc.near = 0.5; sc.far = 9; sc.updateProjectionMatrix();
   sol.shadow.mapSize.set(CEL() ? 1024 : 2048, CEL() ? 1024 : 2048); sol.shadow.bias = -0.0004; sol.shadow.normalBias = 0.006; sol.shadow.radius = 3.5;
@@ -53,7 +53,7 @@ canvas.addEventListener('webglcontextlost', () => { if (NITIDO.on) { NITIDO.pode
 ctl.addEventListener('start', () => { SOMBRA.arrastando = true; }); ctl.addEventListener('end', () => { SOMBRA.arrastando = false; sujar(30); });
 function luzSegue() {
   const az = Math.atan2(cam.position.x - ctl.target.x, cam.position.z - ctl.target.z); let d = az - SOMBRA.az; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) < 0.003) return false;
-  const leve = CEL() || SOMBRA.lento; if (leve && SOMBRA.arrastando) return false;
+  const leve = CEL() || SOMBRA.lento; if (leve && (SOMBRA.arrastando || performance.now() - SOMBRA.mov < 220)) return false;   // no celular a luz (e a sombra) só se acomoda com a câmera parada
   SOMBRA.az += !leve || Math.abs(d) < 0.03 ? d : d * 0.35;
   const a = SOMBRA.az + 0.54, b = SOMBRA.az - 2.47; sol.position.set(Math.sin(a) * 2.92, SOMBRA.on ? 3.9 : 3, Math.cos(a) * 2.92); rim.position.set(Math.sin(b) * 3.2, 2, Math.cos(b) * 3.2);
   SOMBRA.suja = true; return true;
@@ -61,7 +61,7 @@ function luzSegue() {
 // intensidades de base; com uma estrutura escolhida, o resto do corpo escurece um pouco (LUZ.k) e ela se destaca
 const LUZ = { hemi: 1.4, sol: 2.0, rim: 0.9, cam: 0.35, env: 0, k: 1, alvo: 1 };
 function luzAplicar() { hemi.intensity = LUZ.hemi * LUZ.k; sol.intensity = LUZ.sol * LUZ.k; rim.intensity = LUZ.rim * LUZ.k; cam_l.intensity = LUZ.cam * LUZ.k; scene.environmentIntensity = LUZ.env * LUZ.k; }
-function luzPasso() { if (LUZ.k === LUZ.alvo) return false; LUZ.k += (LUZ.alvo - LUZ.k) * 0.22; if (Math.abs(LUZ.alvo - LUZ.k) < 0.004 || matchMedia('(prefers-reduced-motion:reduce)').matches) LUZ.k = LUZ.alvo; luzAplicar(); return true; }
+function luzPasso() { if (SELDIM.value !== SELDIM.alvo) { SELDIM.value += (SELDIM.alvo - SELDIM.value) * 0.25; if (Math.abs(SELDIM.alvo - SELDIM.value) < 0.01 || matchMedia('(prefers-reduced-motion:reduce)').matches) SELDIM.value = SELDIM.alvo; return true; } if (LUZ.k === LUZ.alvo) return false; LUZ.k += (LUZ.alvo - LUZ.k) * 0.22; if (Math.abs(LUZ.alvo - LUZ.k) < 0.004 || matchMedia('(prefers-reduced-motion:reduce)').matches) LUZ.k = LUZ.alvo; luzAplicar(); return true; }
 // luz ambiente de estúdio (reflexos suaves e volume nos músculos): mapa de ambiente gerado na própria GPU, sem download
 import('three/addons/environments/RoomEnvironment.js').then(({ RoomEnvironment }) => {
   if (/[?&]env=0/.test(location.search)) return;
@@ -100,7 +100,7 @@ addEventListener('versao', () => { ajustarPixels(); resize(); sujar(); });
    quatro níveis de superfície (fundo, painel, cartão, flutuante); dourado = ação principal; verde-água = selecionado e estados; vermelho e azul = origem e inserção */
 { const st = document.createElement('style'); st.id = 'tema'; st.textContent = ':root{--bg:#080c18;--bg2:#19223f;--card:#111830;--line:#2e3a66;--ink:#f3f5fb;--ink2:#c0c8dc;--ink3:#939dba;--ac:#f7b84b;--ax:#3fd8cb;--sel:#3fd8cb;--pop:#222d52;--mus:#a63a35;--osso:#e4dac6;--ori:#f0655a;--ins:#5c9dff}html,body{background:#080c18}.painel{background:#111830f7}.chip{background:#222d52d9;transition:background .15s,border-color .15s,color .15s}.reg .chip,.ferr .chip{background:none}.ferr,.movbar .chip{background:#222d52e8}.movbar{background:none}.toast,.sug{background:#222d52f5}.sug button:hover,.sug button:focus{background:#ffffff12}#aulaBar{background:#222d52f0}html.cel .tabbar{background:#111830f5}.busca input,.vbtn,#bAula{background:#19223fcc}.busca input:focus{border-color:var(--sel)}.vbtn:hover{color:var(--ink);border-color:#4a5a94}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--sel);outline-offset:2px}.reg .chip.on::after{background:var(--sel)}.chips .chip.on{border-color:#4a5a94}.ferr .chip.on,.movbar .chip.on,#aulaBar button.on,html.aula #bAula{background:var(--sel);border-color:var(--sel);color:#04211f}#bTirar.on{background:#ff8a45;border-color:#ff8a45;color:#1a0b02}.seg button,.acoes button,.mfases button{transition:background .15s,border-color .15s,color .15s}.acoes button:hover,.seg button:hover{border-color:#4a5a94}.seg button.on,.mfases button.on{border-color:var(--sel);color:var(--sel);background:#3fd8cb1c}.smcmp .seg button.on{background:#3fd8cb26}.acoes button.pri{background:var(--ac);border-color:var(--ac);color:#1a1203}.acoes button.pri:hover{border-color:#ffd58a}.abas button.on{background:var(--pop)}html.cel .tabbar button.on{color:var(--sel)}html.cel .tabbar button.on svg{filter:drop-shadow(0 0 6px #3fd8cb66)}.p-b a{color:var(--sel)}.mv input[type=range],.pctl input[type=range]{accent-color:var(--sel)}.pctl-t output,.kp.mt4 b{color:var(--ink)}.smcmp{border-color:var(--line)}.oi .o{color:var(--ori)}.oi .e{color:var(--ins)}#rot span{background:#080c18d9}'; document.head.appendChild(st); }
 /* ---------- fibras e relevo dos músculos: estado e tabela (as funções ficam mais abaixo, em "fibras musculares") ---------- */
-const FIB = { on: false, u: { value: 0 }, rel: { value: new THREE.Vector2(+(new URLSearchParams(location.search).get('rel') ?? 0.62), 1 / 230) }, feito: new WeakSet(), pronto: false };   // rel = realce do relevo esculpido no modelo (força, escala)
+const FIB = { on: false, u: { value: 0 }, leve: { value: 0 }, rel: { value: new THREE.Vector2(+(new URLSearchParams(location.search).get('rel') ?? 0.62), 1 / 230) }, feito: new WeakSet(), pronto: false };   // rel = realce do relevo esculpido no modelo (força, escala)
 // Arquitetura dos músculos penados: [tipo, ângulo de penação em graus, face do músculo onde o desenho aparece de frente,
 //   e, só nos unipenados, para que lado as fibras caminham ao descer].
 // Ângulos: Ward, Eng, Smallwood e Lieber (2009), Clin Orthop Relat Res 467:1074-82, tabela 3 (média de 16 a 21 peças). Tipo: classificação dos livros de anatomia.
@@ -112,7 +112,11 @@ const ARQ = {
 };
 const TENDAO = /tendon|aponeurosis|Iliotibial tract|Linea alba|ligament|intermuscular septum|Iliopectineal arch/i;
 const CARTILAGEM = /cartilage|disc\b|meniscus|labrum|symphysis/i;
-const fibU = m => m.userData.fibU || (m.userData.fibU = { uFP: { value: new THREE.Vector4(0, 0, 0, 0) }, uFT: { value: new THREE.Vector4(0, 0, 0.3, 0.03) } });
+const SELDIM = { value: 0, alvo: 0 };   // quanto o resto do corpo está apagado (0 a 1) enquanto há uma estrutura escolhida
+const APAGA = `
+if (uDim > 0.0 && uSelf < 0.5) { float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.55, 0.15)); gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(lum * (0.64 - 0.24 * min(lum, 1.0))) * vec3(0.97, 0.96, 1.07), uDim); }`;
+const selU = mat => mat.userData.fibU ? mat.userData.fibU.uSelf : mat.userData.uSelf;
+const fibU = m => m.userData.fibU || (m.userData.fibU = { uSelf: { value: 0 }, uFP: { value: new THREE.Vector4(0, 0, 0, 0) }, uFT: { value: new THREE.Vector4(0, 0, 0.3, 0.03) } });
 /* ---------- materiais ---------- */
 const COR = { ossos: '#e4dac6', musculos: '#a63a35', articulacoes: '#d9c27a' };   // vermelho profundo e uniforme; ossos em marfim
 const hash = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0; return h; };
@@ -223,14 +227,14 @@ const HULL = (() => {
   const mk = (corpo, o) => new THREE.ShaderMaterial(Object.assign({ uniforms: { uW: { value: 0 }, uC, uB, uK: { value: 1 } }, vertexShader: vs, fragmentShader: 'uniform vec3 uC; uniform vec3 uB; uniform float uK; varying float vF;\nvoid main(){ ' + corpo + ' }', transparent: true, depthWrite: false, toneMapped: false }, o));
   const M = {
     contorno: mk('gl_FragColor = vec4(uC, 0.95);', { side: THREE.BackSide }),
-    brilho: mk('float f = clamp(vF, 0.0, 1.0), r = pow(1.0 - f, 2.6); gl_FragColor = vec4(uB * (uK * f) + uC * (0.7 * r), 1.0);', { side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthFunc: THREE.LessEqualDepth, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+    brilho: mk('float f = clamp(vF, 0.0, 1.0), r = pow(1.0 - f, 2.6); gl_FragColor = vec4(uB * (uK * f) + uC * (0.95 * r + 0.05), 1.0);', { side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthFunc: THREE.LessEqualDepth, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
     fantasma: mk('float f = clamp(vF, 0.0, 1.0), r = pow(1.0 - f, 1.8); gl_FragColor = vec4(uC, 0.09 + 0.45 * r);', { side: THREE.FrontSide, depthFunc: THREE.GreaterDepth }),   // só onde está encoberta
   };
   const ms = Object.entries(M).map(([k, mt], i) => { const h = new THREE.Mesh(undefined, mt); h.userData.k = k; h.raycast = () => {}; h.renderOrder = 6 + i; h.frustumCulled = false; return h; });
   let linear = null;
-  const px = () => { M.contorno.uniforms.uW.value = (CEL() ? 1.6 : 2) * 2 * Math.tan(cam.fov * Math.PI / 360) / Math.max(1, innerHeight); };
+  const px = () => { M.contorno.uniforms.uW.value = (CEL() ? 2.6 : 3) * 2 * Math.tan(cam.fov * Math.PI / 360) / Math.max(1, innerHeight); };
   // com a oclusão ligada (computador) a imagem é montada em luz linear; sem ela (celular) as camadas somam direto na cor da tela
-  const cores = () => { const m = sel && MESH[sel]; uC.value.copy(HL); if (m) uB.value.copy(m.material.color); if (!linear) { uC.value.convertLinearToSRGB(); uB.value.convertLinearToSRGB(); } M.brilho.uniforms.uK.value = linear ? 0.2 : 0.11; };
+  const cores = () => { const m = sel && MESH[sel]; uC.value.copy(HL); if (m) uB.value.copy(m.material.color); if (!linear) { uC.value.convertLinearToSRGB(); uB.value.convertLinearToSRGB(); } M.brilho.uniforms.uK.value = 0; };
   addEventListener('resize', px); addEventListener('versao', px);
   const sinc = () => {
     const m = sel && MESH[sel], ok = !!m && !window.POSE_ON && !m.isSkinnedMesh, vidro = ok && m.material.transparent;
@@ -241,8 +245,8 @@ const HULL = (() => {
   return { sinc, saida: l => { l = !!l; if (l !== linear) { linear = l; cores(); } } };
 })();
 function destacar(nome) {
-  if (sel && MESH[sel]) MESH[sel].material.emissive.copy(MESH[sel].userData.em0 || new THREE.Color(0));
-  sel = nome; const m = MESH[nome]; LUZ.alvo = m ? 0.76 : 1; const camadas = HULL.sinc(); sujar(60); if (!m) return;
+  if (sel && MESH[sel]) { MESH[sel].material.emissive.copy(MESH[sel].userData.em0 || new THREE.Color(0)); const u0 = selU(MESH[sel].material); if (u0) u0.value = 0; }
+  sel = nome; const m = MESH[nome]; SELDIM.alvo = m ? 0.82 : 0; { const u1 = m && selU(m.material); if (u1) u1.value = 1; } const camadas = HULL.sinc(); sujar(60); if (!m) return;
   if (!m.userData.em0) m.userData.em0 = m.material.emissive.clone();
   if (!camadas) m.material.emissive.copy(m.material.color).multiplyScalar(0.22).add(_hl.copy(HL).multiplyScalar(0.05));   // em movimento (músculo preso ao esqueleto) vale só o brilho próprio
 }
@@ -1319,7 +1323,7 @@ vec3 fibRot(vec3 v, vec3 ax, float sn, float cs) { return v * cs + cross(ax, v) 
   if (fib) transformed = fibPos;`);
       fibShader(sh, fibU(om));   // estrias das fibras: calculadas na forma de repouso, então acompanham o músculo deformado
     };
-    mat.customProgramCacheKey = () => 'fibra12';
+    mat.customProgramCacheKey = () => 'fibra14';
     return mat;
   }
   // cópia do músculo (ou costela) que a GPU deforma; o original fica escondido enquanto o motor está ativo
@@ -3650,22 +3654,22 @@ document.querySelector('.cred').addEventListener('click', mostrarCreditos);
 // vale igual em repouso, em postura e em movimento.
 function fibMaterial(m) {
   if (m.userData.fib) return; m.userData.fib = true; const U = fibU(m);
-  m.onBeforeCompile = sh => fibShader(sh, U); m.customProgramCacheKey = () => 'fib14'; m.needsUpdate = true;
+  m.onBeforeCompile = sh => fibShader(sh, U); m.customProgramCacheKey = () => 'fib16'; m.needsUpdate = true;
 }
 function relMaterial(m, forca) {   // realce do relevo para o que não é músculo (ossos, cartilagens, ligamentos)
-  const u = { value: new THREE.Vector2(forca * (FIB.rel.value.x > 0 ? 1 : 0), 1 / 260) };
-  m.onBeforeCompile = sh => { sh.uniforms.uRel = u;
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec2 uRel;').replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  const u = { value: new THREE.Vector2(forca * (FIB.rel.value.x > 0 ? 1 : 0), 1 / 260) }; m.userData.uSelf = { value: 0 };
+  m.onBeforeCompile = sh => { sh.uniforms.uRel = u; sh.uniforms.uDim = SELDIM; sh.uniforms.uSelf = m.userData.uSelf;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec2 uRel; uniform float uDim, uSelf;').replace('#include <opaque_fragment>', '#include <opaque_fragment>' + APAGA).replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 if (uRel.x > 0.0) { vec3 rpx = dFdx(-vViewPosition), rpy = dFdy(-vViewPosition), rnx = dFdx(normal), rny = dFdy(normal);
   float curv = (dot(rnx, rpx) + dot(rny, rpy)) / max(dot(rpx, rpx) + dot(rpy, rpy), 1e-12);
   float rk = clamp(curv * uRel.y, -1.0, 1.0); diffuseColor.rgb *= max(0.5, 1.0 + uRel.x * (rk < 0.0 ? 1.1 * rk : 0.35 * rk)); }`); };
-  m.customProgramCacheKey = () => 'rel1'; m.needsUpdate = true;
+  m.customProgramCacheKey = () => 'rel3'; m.needsUpdate = true;
 }
 function fibShader(sh, U) {   // realce do relevo + veios das fibras (também é chamada pelos músculos que se deformam com o esqueleto)
-    sh.uniforms.uFib = FIB.u; sh.uniforms.uRel = FIB.rel; Object.assign(sh.uniforms, U);
+    sh.uniforms.uFib = FIB.u; sh.uniforms.uRel = FIB.rel; sh.uniforms.uDim = SELDIM; sh.uniforms.uLeve = FIB.leve; Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 fibS; varying vec2 vFibS;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvFibS = fibS;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-uniform float uFib; uniform vec2 uRel; uniform vec4 uFP, uFT; varying vec2 vFibS;
+uniform float uFib, uDim, uSelf, uLeve; uniform vec2 uRel; uniform vec4 uFP, uFT; varying vec2 vFibS;
 float fibH(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
 float fibN(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(fibH(i), fibH(i + vec3(1,0,0)), f.x), mix(fibH(i + vec3(0,1,0)), fibH(i + vec3(1,1,0)), f.x), f.y),
@@ -3680,14 +3684,15 @@ if (uFib > 0.0 && uFP.w > 1.5) {
   else if (uFT.x > 0.5) x += sm;   // unipenado: todos para o mesmo lado
   float fdq = max(abs(dFdx(x)), abs(dFdy(x)));   // de longe os veios somem aos poucos, sem serrilhar: três tamanhos, cada um com a sua distância
   fibk = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 330.0)); fibkg = uFib * (1.0 - smoothstep(0.09, 0.34, fdq * 330.0)); float fk2 = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 1100.0)); fibk0 = uFib * (1.0 - smoothstep(0.30, 0.85, fdq * 80.0));
-  fibh = fibAlt(x); const float e = 0.0006; float gx = (fibAlt(x + e) - fibh) / e; fibdx = gx * dFdx(x); fibdy = gx * dFdy(x);
+  fibh = fibAlt(x); if (uLeve < 0.5) { const float e = 0.0006; float gx = (fibAlt(x + e) - fibh) / e; fibdx = gx * dFdx(x); fibdy = gx * dFdy(x); }
   float fl = fibN(vec3(x * 80.0 + 1.9, 0.37, 0.11));
-  fibv = (fibN(vec3(x * 330.0, 0.37, 0.11)) - 0.5) * 0.6 * fibk + (fibN(vec3(x * 1100.0 + 3.7, 0.37, 0.11)) - 0.5) * 0.5 * fk2 + (fl - 0.5) * 0.55 * fibk0;
+  fibv = (fibN(vec3(x * 330.0, 0.37, 0.11)) - 0.5) * 0.6 * fibk + (uLeve < 0.5 ? (fibN(vec3(x * 1100.0 + 3.7, 0.37, 0.11)) - 0.5) * 0.5 * fk2 : 0.0) + (fl - 0.5) * 0.55 * fibk0;
   diffuseColor.rgb *= mix(1.0, 0.72 + 0.32 * fibh, fibkg);   // sulcos finos: só de perto, senão viram pontilhado
   diffuseColor.rgb = diffuseColor.rgb * (1.0 + (0.6 - 0.25 * uFP.x) * fibv) + vec3(0.17, 0.075, 0.065) * max(fibv, 0.0) * (1.0 - uFP.x);   // veios claros rosados entre os escuros (no tendão, só claro e escuro)
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.70, 0.63), 0.34 * fibt * fibkg);   // linha clara: tendão no meio da pena
   float te = vFibS.y; fibtk = (1.0 - uFP.x) * fibk0 * max(smoothstep(0.90 + 0.08 * fl, 1.02, te), 1.0 - smoothstep(-0.02, 0.10 - 0.08 * fl, te));   // perto das pontas, o vermelho passa para o tom claro do tendão, em línguas irregulares
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80, 0.66, 0.58) * (0.92 + 0.25 * fibv), 0.7 * fibtk); }`)
+      .replace('#include <opaque_fragment>', '#include <opaque_fragment>' + APAGA)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = mix(roughnessFactor, clamp(0.44 - 0.2 * fibv, 0.36, 0.6), max(fibk, fibk0) * (1.0 - fibtk));   // brilho de tecido úmido, mais vivo nos veios claros`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -3695,7 +3700,7 @@ if (uRel.x > 0.0) {   // realce do relevo que o modelo já traz esculpido (feixe
   vec3 rpx = dFdx(-vViewPosition), rpy = dFdy(-vViewPosition), rnx = dFdx(normal), rny = dFdy(normal);
   float curv = (dot(rnx, rpx) + dot(rny, rpy)) / max(dot(rpx, rpx) + dot(rpy, rpy), 1e-12);
   float rk = clamp(curv * uRel.y, -1.0, 1.0); diffuseColor.rgb *= max(0.42, 1.0 + uRel.x * (rk < 0.0 ? 1.25 * rk : 0.5 * rk)); }
-if (fibkg > 0.0) { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition); vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1);
+if (fibkg > 0.0 && uLeve < 0.5) { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition); vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1);
   vec3 g = sign(det) * (fibdx * r1 + fibdy * r2); normal = normalize(abs(det) * normal - 0.00055 * fibkg * g); }`);
 }
 async function fibDados() {   // baixa e abre modelo/fibras.bin uma vez; põe phi e psi em cada malha de músculo
@@ -3845,15 +3850,15 @@ renderer.setAnimationLoop(() => {
   const voando = anim.t < 1;
   if (voando) { anim.t = Math.min(1, (performance.now() - anim.t0) / 900); const k = ease(anim.t); ctl.target.lerpVectors(anim.de.t, anim.ate.t, k); cam.position.lerpVectors(anim.de.p, anim.ate.p, k); }
   const posando = POSE.tick();
-  if (ctl.update()) sujar(2);
+  if (ctl.update()) { sujar(2); SOMBRA.mov = performance.now(); } if (voando) SOMBRA.mov = performance.now();
   if (luzPasso()) sujar(2);
   if (luzSegue()) sujar(2);
   if (!voando && !posando && suja <= 0) {
     // celular: enquanto mexe, desenha leve; meio segundo depois de parar, redesenha uma vez na resolução cheia da tela (imagem parada nítida)
-    if (CEL() && NITIDO.pode && !NITIDO.on && NITIDO.t && performance.now() - NITIDO.t > 450 && !MOV.on && !AG.on) { NITIDO.on = true; renderer.setPixelRatio(Math.min(devicePixelRatio, 3)); renderer.render(scene, cam); }
+    if (CEL() && NITIDO.pode && !NITIDO.on && NITIDO.t && performance.now() - NITIDO.t > 450 && !MOV.on && !AG.on) { NITIDO.on = true; FIB.leve.value = 0; renderer.setPixelRatio(Math.min(devicePixelRatio, 3)); renderer.render(scene, cam); }
     return;
   }
-  NITIDO.t = performance.now(); if (NITIDO.on) { NITIDO.on = false; ajustarPixels(); }
+  NITIDO.t = performance.now(); if (NITIDO.on) { NITIDO.on = false; ajustarPixels(); } FIB.leve.value = CEL() && NITIDO.pode ? 1 : 0;
   if (suja > 0) suja--;
   if (MOV.on) movQuadro(); if (AG.on) agQuadro(); if (POSE.ativo) POSE.rotulos();
   const comAO = !!(AO.comp && AO.on); HULL.saida(comAO);
